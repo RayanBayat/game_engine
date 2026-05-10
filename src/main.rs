@@ -17,6 +17,7 @@
 use std::sync::Arc;
 
 use winit::application::ApplicationHandler;
+use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
@@ -116,6 +117,25 @@ impl State {
         surface.configure(&device, &config);
 
         Self { surface, device, queue, config, window }
+    }
+
+    /// Reconfigure the surface for a new window size.
+    ///
+    /// Two important behaviors:
+    ///   * Zero-size guard. On Windows, minimizing the window fires
+    ///     `Resized(0, 0)` — a zero-dimension `configure` call panics
+    ///     inside wgpu. We bail early; the next non-zero resize after
+    ///     restore re-validates the surface.
+    ///   * Reuse `self.config`. We only mutate the dimensions and re-apply,
+    ///     keeping the format / present mode / view formats stable.
+    /// See: https://sotrh.github.io/learn-wgpu/beginner/tutorial2-surface/
+    fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        if new_size.width == 0 || new_size.height == 0 {
+            return;
+        }
+        self.config.width = new_size.width;
+        self.config.height = new_size.height;
+        self.surface.configure(&self.device, &self.config);
     }
 
     /// Draw a single frame. For now: clear the swapchain image to a dark
@@ -249,6 +269,11 @@ impl ApplicationHandler for App {
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
+            // Fires on every drag-corner resize, DPI change, and on the
+            // initial show. Without this handler, the swapchain stays
+            // sized to the window's first dimensions and presents
+            // garbage / crashes after the first resize.
+            WindowEvent::Resized(new_size) => state.resize(new_size),
             WindowEvent::RedrawRequested => {
                 // All surface error recovery now lives inside `render`
                 // (wgpu 29 collapsed the old SurfaceError into the

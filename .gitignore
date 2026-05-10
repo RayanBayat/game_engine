@@ -1,0 +1,15 @@
+# Cargo build output. Cargo.lock is intentionally NOT ignored — this is a
+# binary crate, so we want a reproducible dependency graph in git.
+# https://doc.rust-lang.org/cargo/faq.html#why-have-cargolock-in-version-control
+/target
+
+# Windows debug symbol files emitted by `cargo build` on MSVC toolchains.
+*.pdb
+
+# Editor / IDE local state — varies per developer, never shared.
+.vscode/
+.idea/
+
+# Per-developer Claude Code session settings (the project-shared
+# .claude/settings.json, if we ever add one, is fine to track).
+**/.claude/settings.local.json

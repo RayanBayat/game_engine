@@ -3,4 +3,33 @@ name = "game_engine"
 version = "0.1.0"
 edition = "2024"
 
+# Dependency choices match the layered design described in lisyarus,
+# "So you want to make a game engine?" — start tiny, grow only when a
+# real game forces a feature. Versions verified on docs.rs / crates.io
+# (May 2026); pin precisely so both developers see identical builds.
+#   https://lisyarus.github.io/blog/posts/so-you-want-to-make-a-game-engine.html
 [dependencies]
+# Window + OS event loop. 0.30 introduced the `ApplicationHandler` trait;
+# the older closure-based `EventLoop::run` form is deprecated. Most
+# pre-2024 tutorials show the dead pattern — recognize and translate.
+# Note (2026-05-10): 0.31.0-beta.2 exists but we deliberately stay on
+# the latest stable 0.30.x — beta APIs churn and tutorials/SO content
+# all target 0.30, which matters because we're learning by reading.
+#   https://docs.rs/winit/0.30.13/winit/application/trait.ApplicationHandler.html
+winit = "0.30.13"
+
+# Cross-backend GPU API (Vulkan / Metal / DX12 / WebGPU). Used for the
+# Surface / Adapter / Device / Queue + clear pass. Default features are
+# enough until we add a real renderer.
+#   https://sotrh.github.io/learn-wgpu/beginner/tutorial2-surface/
+wgpu = "29.0.3"
+
+# Tiny single-thread async block_on. wgpu's `request_adapter` /
+# `request_device` are async; we don't want a full tokio for a desktop
+# binary, so pollster blocks the main thread for those few calls.
+pollster = "0.4.0"
+
+# wgpu logs via the `log` facade; without a subscriber it is silent on
+# errors. Forgetting this == hours of debugging black screens.
+#   https://github.com/gfx-rs/wgpu/wiki/Debugging-wgpu-Applications
+env_logger = "0.11.10"

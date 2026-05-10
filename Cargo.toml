@@ -33,3 +33,43 @@ pollster = "0.4.0"
 # errors. Forgetting this == hours of debugging black screens.
 #   https://github.com/gfx-rs/wgpu/wiki/Debugging-wgpu-Applications
 env_logger = "0.11.10"
+
+# ---------------------------------------------------------------------------
+# Lint configuration — Cargo's `[lints]` table (stable since Rust 1.74).
+# `cargo clippy` and the rust-analyzer "checkOnSave" feature both honor
+# these. Override individual fires with `#[allow(name)]` at the offending
+# item; do NOT relax the table itself without team agreement.
+#   https://doc.rust-lang.org/cargo/reference/manifest.html#the-lints-section
+# ---------------------------------------------------------------------------
+[lints.rust]
+# We don't use `unsafe`; if a future commit needs it, opt in locally
+# with `#[allow(unsafe_code)]` at the call site so reviewers see it.
+unsafe_code = "deny"
+# `must_use` results (Result, MutexGuard, ...) silently dropped is
+# almost always a bug. Promote the default warning to a hard error.
+unused_must_use = "deny"
+
+[lints.clippy]
+# Enable the curated `pedantic` group on top of the always-on lints
+# (correctness, suspicious, style, complexity, perf). Pedantic fires
+# on opinionated stuff (e.g. `module_name_repetitions`) — `#[allow(
+# clippy::name)]` at the offending item is the escape hatch.
+# `priority = -1` is required by Cargo when enabling a lint group;
+# without it, individual `clippy::*` overrides won't take effect.
+pedantic = { level = "warn", priority = -1 }
+
+# Specific pedantic lints we deliberately silence for this project.
+# These overrides have higher (default = 0) priority than the group
+# above, so they win.
+#
+# Our citation style is "indented prose with bare URLs", chosen
+# because the source-as-tutorial flow reads better than rustdoc-
+# linked HTML. If we ever decide to optimize for rustdoc output,
+# flip these back to the group default.
+doc_markdown = "allow"
+doc_lazy_continuation = "allow"
+doc_overindented_list_items = "allow"
+# `let _alpha = tick.alpha;` is intentional — the binding documents
+# the algorithm even though it has no runtime effect yet. Will
+# become a real read once the renderer takes an interpolation alpha.
+no_effect_underscore_binding = "allow"

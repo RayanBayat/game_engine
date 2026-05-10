@@ -155,7 +155,7 @@ impl State {
                 force_fallback_adapter: false,
             })
             .await
-            .expect("no compatible GPU adapter found");
+            .unwrap();
 
         // Device + Queue. Default descriptor: no extra features, no
         // raised limits — we don't need them for clear-only and asking
@@ -177,7 +177,10 @@ impl State {
             .formats
             .iter()
             .copied()
-            .find(|f| f.is_srgb())
+            // Method-reference form (clippy `redundant_closure_for_method_calls`):
+            // `.find(|f| f.is_srgb())` and `.find(TextureFormat::is_srgb)` do
+            // the same thing; the latter avoids constructing a tiny closure.
+            .find(wgpu::TextureFormat::is_srgb)
             .unwrap_or(caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
@@ -197,7 +200,13 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        Self { surface, device, queue, config, window }
+        Self {
+            surface,
+            device,
+            queue,
+            config,
+            window,
+        }
     }
 
     /// Reconfigure the surface for a new window size.
@@ -248,11 +257,12 @@ impl State {
                 self.surface.configure(&self.device, &self.config);
                 return;
             }
-            // Window minimized or hidden — drop the frame; the OS isn't
-            // showing it anyway. We'll keep ticking (sim still runs).
-            wgpu::CurrentSurfaceTexture::Occluded => return,
-            // Timeout while acquiring an image (rare). Skip the frame.
-            wgpu::CurrentSurfaceTexture::Timeout => return,
+            // Occluded: window minimized or hidden — drop the frame, the
+            //   OS isn't showing it anyway. Sim keeps ticking.
+            // Timeout: rare, can't acquire an image fast enough — skip.
+            // (Merged because the recovery is identical; clippy's
+            //  `match_same_arms` lint flagged the duplicated bodies.)
+            wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Timeout => return,
             // Validation error already surfaced via the wgpu error scope
             // / uncaptured-error callback; nothing more to do here.
             wgpu::CurrentSurfaceTexture::Validation => {
@@ -267,11 +277,11 @@ impl State {
 
         // Encoder records a sequence of GPU commands; nothing executes
         // until `queue.submit(encoder.finish())`.
-        let mut encoder =
-            self.device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("frame"),
-                });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("frame"),
+            });
 
         {
             // Render pass with one color attachment (the swapchain view)
@@ -349,7 +359,9 @@ impl ApplicationHandler for App {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        let Some(state) = self.state.as_mut() else { return };
+        let Some(state) = self.state.as_mut() else {
+            return;
+        };
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),

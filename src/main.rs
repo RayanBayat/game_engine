@@ -15,12 +15,93 @@
 //!     https://docs.rs/winit/0.30.13/winit/application/trait.ApplicationHandler.html
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
+
+// ---------------------------------------------------------------------------
+// Fixed-timestep simulation clock — Glenn Fiedler, "Fix Your Timestep!".
+//   https://gafferongames.com/post/fix_your_timestep/
+//
+// A platformer's jump arcs, gravity, and collision response are mathematically
+// sensitive to `dt`. If we feed the variable wall-clock frame time directly
+// into the update step, behavior changes with the player's hardware: springs
+// explode, bullets tunnel through walls, jumps land differently at 60 vs 144 Hz.
+//
+// Solution: render at whatever rate the display gives us; simulate at a fixed
+// rate. The `Clock` accumulates wall-clock time and the inner while-loop
+// drains it in `FIXED_DT` chunks. Whatever's left (< FIXED_DT) becomes
+// `alpha` — the fraction of a tick the render is "ahead" of the most recent
+// simulation state. We'll pass `alpha` to the renderer later to interpolate
+// between previous and current sim states for sub-tick visual smoothness.
+//
+// This is "stage 4" in Fiedler's article — the canonical answer. Adopting it
+// from day one is barely more code than the naive variable-dt loop and we
+// never have to rewrite the loop later.
+// ---------------------------------------------------------------------------
+
+/// Simulation tick rate: 60 Hz (≈ 16.667 ms per step). Conventional and
+/// matches typical monitor refresh, so the accumulator stays small.
+const FIXED_DT: Duration = Duration::from_nanos(16_666_667);
+
+/// Maximum wall-clock time the loop will absorb in one frame. Without
+/// this clamp, a debugger pause or OS sleep can push the elapsed time
+/// to seconds; the inner while-loop would then step thousands of times
+/// trying to "catch up", freezing the app — Fiedler calls this the
+/// "spiral of death". 250 ms is the canonical value from the article.
+const MAX_FRAME_TIME: Duration = Duration::from_millis(250);
+
+/// Fixed-timestep clock state.
+///
+/// `last_instant` is `Option` because `Instant::now()` is not `const`,
+/// so the struct can't be initialized eagerly with a sane "previous"
+/// time. The first `tick()` records the first timestamp and reports
+/// zero elapsed for that frame — there's nothing to simulate before
+/// the first frame anyway.
+#[derive(Default)]
+struct Clock {
+    last_instant: Option<Instant>,
+    accumulator: Duration,
+}
+
+/// Result of advancing the clock by one redraw's worth of wall time.
+struct Tick {
+    /// How many `FIXED_DT` simulation steps the caller should run now.
+    /// May be zero (if the redraw fired faster than `FIXED_DT`) or
+    /// several (if a frame ran long).
+    steps: u32,
+    /// Fraction of the next tick already accumulated, in [0.0, 1.0).
+    /// Renderers use this to interpolate `prev_state -> curr_state`
+    /// for sub-tick smoothness. Unused while we have no simulation.
+    alpha: f32,
+}
+
+impl Clock {
+    fn tick(&mut self) -> Tick {
+        let now = Instant::now();
+        let frame_time = match self.last_instant {
+            Some(prev) => (now - prev).min(MAX_FRAME_TIME),
+            None => Duration::ZERO,
+        };
+        self.last_instant = Some(now);
+        self.accumulator += frame_time;
+
+        let mut steps = 0u32;
+        while self.accumulator >= FIXED_DT {
+            steps += 1;
+            self.accumulator -= FIXED_DT;
+        }
+
+        Tick {
+            steps,
+            alpha: self.accumulator.as_secs_f32() / FIXED_DT.as_secs_f32(),
+        }
+    }
+}
 
 /// GPU + swapchain bundle.
 ///
@@ -234,9 +315,12 @@ impl State {
 
 /// App now owns a `State` instead of a bare window — the window lives
 /// inside `State` so the GPU stack and the surface have a shared owner.
+/// `clock` drives the fixed-timestep simulation loop independent of
+/// the redraw rate (see `Clock` doc above for the algorithm).
 #[derive(Default)]
 struct App {
     state: Option<State>,
+    clock: Clock,
 }
 
 impl ApplicationHandler for App {
@@ -275,11 +359,26 @@ impl ApplicationHandler for App {
             // garbage / crashes after the first resize.
             WindowEvent::Resized(new_size) => state.resize(new_size),
             WindowEvent::RedrawRequested => {
-                // All surface error recovery now lives inside `render`
+                // Advance the fixed-timestep clock first, BEFORE render.
+                // `tick.steps` says how many simulation updates to run
+                // this frame (0..N); `tick.alpha` is the render
+                // interpolation factor. With no sim state yet the loop
+                // body is empty — when we add a `World`, this is where
+                //   world.update(FIXED_DT)
+                // goes. See Glenn Fiedler, "Fix Your Timestep!".
+                let tick = self.clock.tick();
+                for _ in 0..tick.steps {
+                    // Simulation step would happen here.
+                }
+                // `_alpha` will be passed to `render` once we have
+                // prev/curr simulation states to interpolate between.
+                let _alpha = tick.alpha;
+
+                // All surface error recovery lives inside `render`
                 // (wgpu 29 collapsed the old SurfaceError into the
-                // CurrentSurfaceTexture enum). Caller just kicks the
-                // next frame.
+                // CurrentSurfaceTexture enum).
                 state.render();
+
                 // Continuous redraw — see Poll-mode rationale in `main`.
                 state.window.request_redraw();
             }

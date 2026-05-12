@@ -6,8 +6,12 @@
 # Windows debug symbol files emitted by `cargo build` on MSVC toolchains.
 *.pdb
 
-# Editor / IDE local state — varies per developer, never shared.
-.vscode/
+# Editor / IDE local state — most of it varies per developer.
+# Exception: `.vscode/tasks.json` is tracked so both devs share the
+# same fmt / lint / test / run / ci commands. Add other shareable
+# files (extensions.json, launch.json) to the allow-list as needed.
+.vscode/*
+!.vscode/tasks.json
 .idea/
 
 # Per-developer Claude Code session settings (the project-shared

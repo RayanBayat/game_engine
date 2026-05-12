@@ -112,11 +112,68 @@ git log --reverse --format='%n=== %h %s ===%n%n%b'
 Each commit compiles cleanly on its own; you can `git checkout <hash>`
 and inspect the engine at any stage.
 
+## Tooling
+
+The Rust toolchain ships everything we need; no extra installs.
+
+| Command                                  | What it does                                                  |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| `cargo fmt --all`                        | Apply `rustfmt` (canonical Rust style — like `black` for Py). |
+| `cargo fmt --all -- --check`             | Verify formatting without writing changes (CI-friendly).      |
+| `cargo clippy --all-targets -- -D warnings` | Lint with `clippy` — like `ruff lint --select=ALL` for Rust. |
+| `cargo check --all-targets`              | Type-check only, no link. Fastest feedback.                   |
+| `cargo test`                             | Run unit + integration tests (parallel by default).           |
+| `cargo run`                              | Build & launch the engine.                                    |
+
+**No direct equivalent of `tox`.** Rust doesn't run against multiple
+language versions, and `cargo test` already parallelizes per
+test-binary. If you want a Makefile-style task runner across
+projects, [`just`](https://github.com/casey/just) is the community
+standard — but for this project the VS Code tasks below cover the
+same need.
+
+### Lint configuration
+
+`Cargo.toml` enables clippy's `pedantic` group on top of the always-on
+default groups (correctness / suspicious / style / complexity / perf).
+A few pedantic lints are deliberately silenced — see comments in
+`[lints.clippy]` for the rationale. Override individual fires at the
+offending item with `#[allow(clippy::name)]`; do not relax the table
+without team agreement.
+
+### Tests
+
+- **Unit tests** live in `src/main.rs` under `#[cfg(test)] mod tests`.
+  They have access to private items (`Clock`, `FIXED_DT`, ...).
+  This is where most tests should go while we're a binary crate.
+- **Integration tests** live in `tests/`. Each `.rs` file there is a
+  separate test crate. *Currently a placeholder* — binary crates
+  cannot expose items to external test code, so until we refactor
+  into `lib.rs + main.rs` (the canonical pattern when integration
+  tests start to matter), `tests/integration_smoke.rs` only contains
+  scaffolding.
+
+### VS Code tasks
+
+`.vscode/tasks.json` is committed (other `.vscode/` files are
+gitignored). After cloning, run "Tasks: Run Task" from the command
+palette to pick:
+
+- `fmt`, `fmt:check`, `lint`, `check`, `test`, `run`, `ci`
+- `ci` runs `fmt:check + lint + test` in sequence — what a future
+  CI pipeline would do, locally.
+
+Default keybindings:
+
+- **Ctrl+Shift+B** → `check`
+- **Ctrl+Shift+T** → `test`
+
 ## Editor / IDE setup
 
 - **rust-analyzer** is required for any productive editing.
-- VS Code: install the `rust-lang.rust-analyzer` extension. The
-  workspace will work out of the box.
+- VS Code: install the `rust-lang.rust-analyzer` extension. It picks
+  up `Cargo.toml`'s `[lints]` section automatically, so clippy
+  warnings appear in the editor without extra configuration.
 - Per-developer settings (e.g. local Claude Code state) live in
   `.claude/settings.local.json`, which is gitignored.
 

@@ -155,7 +155,7 @@ impl State {
                 force_fallback_adapter: false,
             })
             .await
-            .expect("no compatible GPU adapter found");
+            .unwrap();
 
         // Device + Queue. Default descriptor: no extra features, no
         // raised limits — we don't need them for clear-only and asking
@@ -177,7 +177,10 @@ impl State {
             .formats
             .iter()
             .copied()
-            .find(|f| f.is_srgb())
+            // Method-reference form (clippy `redundant_closure_for_method_calls`):
+            // `.find(|f| f.is_srgb())` and `.find(TextureFormat::is_srgb)` do
+            // the same thing; the latter avoids constructing a tiny closure.
+            .find(wgpu::TextureFormat::is_srgb)
             .unwrap_or(caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
@@ -197,7 +200,13 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        Self { surface, device, queue, config, window }
+        Self {
+            surface,
+            device,
+            queue,
+            config,
+            window,
+        }
     }
 
     /// Reconfigure the surface for a new window size.
@@ -248,11 +257,12 @@ impl State {
                 self.surface.configure(&self.device, &self.config);
                 return;
             }
-            // Window minimized or hidden — drop the frame; the OS isn't
-            // showing it anyway. We'll keep ticking (sim still runs).
-            wgpu::CurrentSurfaceTexture::Occluded => return,
-            // Timeout while acquiring an image (rare). Skip the frame.
-            wgpu::CurrentSurfaceTexture::Timeout => return,
+            // Occluded: window minimized or hidden — drop the frame, the
+            //   OS isn't showing it anyway. Sim keeps ticking.
+            // Timeout: rare, can't acquire an image fast enough — skip.
+            // (Merged because the recovery is identical; clippy's
+            //  `match_same_arms` lint flagged the duplicated bodies.)
+            wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Timeout => return,
             // Validation error already surfaced via the wgpu error scope
             // / uncaptured-error callback; nothing more to do here.
             wgpu::CurrentSurfaceTexture::Validation => {
@@ -267,11 +277,11 @@ impl State {
 
         // Encoder records a sequence of GPU commands; nothing executes
         // until `queue.submit(encoder.finish())`.
-        let mut encoder =
-            self.device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("frame"),
-                });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("frame"),
+            });
 
         {
             // Render pass with one color attachment (the swapchain view)
@@ -349,7 +359,9 @@ impl ApplicationHandler for App {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        let Some(state) = self.state.as_mut() else { return };
+        let Some(state) = self.state.as_mut() else {
+            return;
+        };
 
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
@@ -406,4 +418,75 @@ fn main() {
     event_loop
         .run_app(&mut app)
         .expect("event loop terminated with error");
+}
+
+// ---------------------------------------------------------------------------
+// Unit tests — run with `cargo test`.
+//
+// These live in a child module of the binary so they can see private items
+// (`Clock`, `FIXED_DT`, ...). Integration tests that exercise public API
+// surface live in the top-level `tests/` directory; right now there is no
+// public API to test from outside, see `tests/integration_smoke.rs`.
+//
+// The `#[cfg(test)]` attribute means this module is only compiled when
+// running tests — zero cost in `cargo build` / `cargo run`.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::{Clock, Duration, FIXED_DT, MAX_FRAME_TIME};
+
+    /// Sanity-check the simulation rate constant.
+    /// 16.666... ms per tick = 60 Hz; allow a 1 µs slack for rounding.
+    #[test]
+    fn fixed_dt_is_60_hz() {
+        let nanos = FIXED_DT.as_nanos();
+        assert!(nanos > 16_660_000, "FIXED_DT too short: {nanos} ns");
+        assert!(nanos < 16_670_000, "FIXED_DT too long: {nanos} ns");
+    }
+
+    /// `Clock::default()` should leave us in a clean "no prior frame" state.
+    #[test]
+    fn clock_default_starts_empty() {
+        let clock = Clock::default();
+        assert!(clock.last_instant.is_none());
+        assert_eq!(clock.accumulator, Duration::ZERO);
+    }
+
+    /// First call to `tick()` happens with `last_instant = None`, so the
+    /// computed `frame_time` is ZERO. With no preloaded accumulator the
+    /// loop body should never execute.
+    #[test]
+    fn first_tick_runs_no_steps() {
+        let mut clock = Clock::default();
+        let tick = clock.tick();
+        assert_eq!(tick.steps, 0);
+        assert!(tick.alpha.abs() < f32::EPSILON);
+        assert!(clock.last_instant.is_some());
+    }
+
+    /// Pre-load the accumulator with 3 full ticks + some leftover, then
+    /// `tick()`. Because `last_instant = None` on the first call the
+    /// elapsed wall-time term is zero, so we can assert exactly on the
+    /// drained counts. This is the algorithmic core of the fixed-timestep
+    /// loop.
+    #[test]
+    fn accumulator_drains_in_fixed_dt_chunks() {
+        let leftover = Duration::from_millis(5);
+        let mut clock = Clock {
+            last_instant: None,
+            accumulator: FIXED_DT * 3 + leftover,
+        };
+        let tick = clock.tick();
+        assert_eq!(tick.steps, 3);
+        assert_eq!(clock.accumulator, leftover);
+        // alpha = leftover / FIXED_DT — should be in [0, 1).
+        assert!(tick.alpha >= 0.0 && tick.alpha < 1.0);
+    }
+
+    /// MAX_FRAME_TIME exists to prevent Fiedler's "spiral of death".
+    /// Verify it's set to the canonical 250 ms from the article.
+    #[test]
+    fn max_frame_time_is_250_ms() {
+        assert_eq!(MAX_FRAME_TIME, Duration::from_millis(250));
+    }
 }

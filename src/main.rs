@@ -17,11 +17,13 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
+use winit::keyboard::{PhysicalKey, KeyCode};
 
 // ---------------------------------------------------------------------------
 // Fixed-timestep simulation clock — Glenn Fiedler, "Fix Your Timestep!".
@@ -55,6 +57,45 @@ const FIXED_DT: Duration = Duration::from_nanos(16_666_667);
 /// "spiral of death". 250 ms is the canonical value from the article.
 const MAX_FRAME_TIME: Duration = Duration::from_millis(250);
 
+struct Player {
+    position: [f32; 2],
+    size: [f32; 2],
+}
+
+impl Player {
+
+    fn handle_key(&mut self, code: KeyCode) -> bool {
+        match code {
+            KeyCode::KeyW | KeyCode::ArrowUp => {
+                self.position[1] -= 1.0; // Move up by 0.1 units
+                true
+            }
+            KeyCode::KeyA | KeyCode::ArrowLeft => {
+                self.position[0] -= 1.0; // Move left by 0.1 units
+                true
+            }
+            KeyCode::KeyS | KeyCode::ArrowDown => {
+                self.position[1] += 1.0; // Move down by 0.1 units
+                true
+            }
+            KeyCode::KeyD | KeyCode::ArrowRight => {
+                self.position[0] += 1.0; // Move right by 0.1 units
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct PlayerUniform {
+    position: [f32; 2],
+    screen_size: [f32; 2],
+    player_size: [f32; 2],
+    _padding: [f32; 2],
+}
+
 /// Fixed-timestep clock state.
 ///
 /// `last_instant` is `Option` because `Instant::now()` is not `const`,
@@ -67,6 +108,50 @@ struct Clock {
     last_instant: Option<Instant>,
     accumulator: Duration,
 }
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+// lib.rs
+impl Vertex {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    shader_location: 1,
+                    format: wgpu::VertexFormat::Float32x3,
+                }
+            ]
+        }
+    }
+}
+
+const VERTICES: &[Vertex] = &[
+    Vertex { position: [1.0, 0.0, 0.0], color: [1.0, 0.0, 0.0] },
+    Vertex { position: [0.0, 0.0, 0.0], color: [0.0, 1.0, 0.0] },
+    Vertex { position: [0.0, 1.0, 0.0], color: [0.0, 0.0, 1.0] },
+    Vertex { position: [1.0, 1.0, 0.0], color: [1.0, 1.0, 1.0] },
+];
+
+const INDICES: &[u16] = &[
+    0, 1, 3, // triangle 1
+    1, 2, 3, // triangle 2
+];
+
+
+
 
 /// Result of advancing the clock by one redraw's worth of wall time.
 struct Tick {
@@ -91,7 +176,7 @@ impl Clock {
         self.accumulator += frame_time;
 
         let mut steps = 0u32;
-        while self.accumulator >= FIXED_DT {
+        while self.accumulator >= FIXED_DT { 
             steps += 1;
             self.accumulator -= FIXED_DT;
         }
@@ -102,6 +187,8 @@ impl Clock {
         }
     }
 }
+
+
 
 /// GPU + swapchain bundle.
 ///
@@ -117,12 +204,20 @@ impl Clock {
 ///
 /// See: https://sotrh.github.io/learn-wgpu/beginner/tutorial2-surface/
 struct State {
+    num_indices: u32,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer, 
+
+    // Once we have a `World` and `Player`, they'll go here so `State` owns
+    player: Player,
+    player_uniform_buffer: wgpu::Buffer,
+    player_bind_group: wgpu::BindGroup,
 }
 
 impl State {
@@ -133,7 +228,12 @@ impl State {
     /// async runtime for a desktop binary, so the caller wraps this in
     /// `pollster::block_on`.
     async fn new(window: Arc<Window>) -> Self {
-        let size = window.inner_size();
+        let num_indices = INDICES.len() as u32;
+        let size = window.inner_size(); 
+        let player = Player {
+            position: [5.0, 5.0],
+            size: [790.0, 590.0],
+        };
 
         // The Instance is the wgpu entry point; defaults pick the
         // platform's preferred backend (DX12 on Windows, Metal on macOS,
@@ -201,16 +301,73 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        let player_uniform = PlayerUniform {
+            position: player.position,
+            screen_size: [config.width as f32, config.height as f32],
+            player_size: player.size,
+            _padding: [0.0; 2],
+        };
+
+        let player_uniform_buffer =
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Player Uniform Buffer"),
+                contents: bytemuck::bytes_of(&player_uniform),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            });
+
+        let vertex_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+        let index_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(INDICES),
+                usage: wgpu::BufferUsages::INDEX,
+            }
+        );
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
 
+        let player_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Player Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        let player_bind_group =
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Player Bind Group"),
+            layout: &player_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0, 
+                    resource: player_uniform_buffer.as_entire_binding(),
+                },
+            ],
+        });
+
         let render_pipeline_layout =
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[],
+            bind_group_layouts: &[Some(&player_bind_group_layout)],
             immediate_size: 0,
         });
 
@@ -220,7 +377,9 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"), // 1.
-                buffers: &[], // 2.
+                buffers: &[
+                    Vertex::desc(),
+                ],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState { // 3.
@@ -233,16 +392,13 @@ impl State {
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
-                primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList, // 1.
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw, // 2.
-                cull_mode: Some(wgpu::Face::Back),
-                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
                 polygon_mode: wgpu::PolygonMode::Fill,
-                // Requires Features::DEPTH_CLIP_CONTROL
                 unclipped_depth: false,
-                // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
             depth_stencil: None, // 1.
@@ -256,12 +412,20 @@ impl State {
     });
 
         Self {
+            num_indices,
             surface,
             device,
             queue,
             config,
             window,
             render_pipeline,
+            vertex_buffer,
+            index_buffer,
+            ///////////////////////////
+            player,
+            player_uniform_buffer,
+            player_bind_group,
+
         }
     }
 
@@ -282,6 +446,26 @@ impl State {
         self.config.width = new_size.width;
         self.config.height = new_size.height;
         self.surface.configure(&self.device, &self.config);
+    }
+
+    fn update(&mut self) {
+        // Simulation update would go here once we have a `World` and
+        // `Player` to update.
+        let player_uniform = PlayerUniform {
+            position: [
+                self.player.position[0],
+                self.player.position[1],
+            ],
+            player_size: self.player.size, 
+            screen_size: [self.config.width as f32, self.config.height as f32],
+            _padding: [0.0; 2],    
+        };
+
+        self.queue.write_buffer(
+            &self.player_uniform_buffer,
+            0,
+            bytemuck::bytes_of(&player_uniform),
+        );
     }
 
     /// Draw a single frame. For now: clear the swapchain image to a dark
@@ -339,6 +523,7 @@ impl State {
                 label: Some("frame"),
             });
 
+            
         {
             // Render pass with one color attachment (the swapchain view)
             // and no draw calls — `LoadOp::Clear` writes the clear color
@@ -374,7 +559,10 @@ impl State {
             // _pass is dropped here, ending the render pass. wgpu records
             // an `EndRenderPass` command at this point.
             _pass.set_pipeline(&self.render_pipeline); // 2.
-            _pass.draw(0..3, 0..1); // 3.
+            _pass.set_bind_group(0, &self.player_bind_group, &[]);
+            _pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            _pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            _pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.
         }
         
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -428,6 +616,18 @@ impl ApplicationHandler for App {
             // initial show. Without this handler, the swapchain stays
             // sized to the window's first dimensions and presents
             // garbage / crashes after the first resize.
+            WindowEvent::KeyboardInput { event, .. } => {
+                // Handle keyboard input here, e.g. by updating the player's velocity
+                // physical keyboard key
+                match event.physical_key {
+                    PhysicalKey::Code(code) => {
+                        state.player.handle_key(code);
+                    }
+
+                    _ => {}
+                }
+            }
+
             WindowEvent::Resized(new_size) => state.resize(new_size),
             WindowEvent::RedrawRequested => {
                 // Advance the fixed-timestep clock first, BEFORE render.
@@ -448,6 +648,7 @@ impl ApplicationHandler for App {
                 // All surface error recovery lives inside `render`
                 // (wgpu 29 collapsed the old SurfaceError into the
                 // CurrentSurfaceTexture enum).
+                state.update();
                 state.render();
 
                 // Continuous redraw — see Poll-mode rationale in `main`.
@@ -478,6 +679,7 @@ fn main() {
         .run_app(&mut app)
         .expect("event loop terminated with error");
 }
+
 
 // ---------------------------------------------------------------------------
 // Unit tests — run with `cargo test`.

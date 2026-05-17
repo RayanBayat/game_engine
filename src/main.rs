@@ -57,9 +57,19 @@ const FIXED_DT: Duration = Duration::from_nanos(16_666_667);
 /// "spiral of death". 250 ms is the canonical value from the article.
 const MAX_FRAME_TIME: Duration = Duration::from_millis(250);
 
+struct RectObject {
+    position: [f32; 2],
+    size: [f32; 2],
+}
+
 struct Player {
     position: [f32; 2],
     size: [f32; 2],
+}
+
+struct RenderRect {
+    uniform_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
 }
 
 impl Player {
@@ -67,19 +77,19 @@ impl Player {
     fn handle_key(&mut self, code: KeyCode) -> bool {
         match code {
             KeyCode::KeyW | KeyCode::ArrowUp => {
-                self.position[1] -= 1.0; // Move up by 0.1 units
+                self.position[1] -= 2.0; // Move up by 0.1 units
                 true
             }
             KeyCode::KeyA | KeyCode::ArrowLeft => {
-                self.position[0] -= 1.0; // Move left by 0.1 units
+                self.position[0] -= 2.0; // Move left by 0.1 units
                 true
             }
             KeyCode::KeyS | KeyCode::ArrowDown => {
-                self.position[1] += 1.0; // Move down by 0.1 units
+                self.position[1] += 2.0; // Move down by 0.1 units
                 true
             }
             KeyCode::KeyD | KeyCode::ArrowRight => {
-                self.position[0] += 1.0; // Move right by 0.1 units
+                self.position[0] += 2.0; // Move right by 0.1 units
                 true
             }
             _ => false,
@@ -94,6 +104,41 @@ struct PlayerUniform {
     screen_size: [f32; 2],
     player_size: [f32; 2],
     _padding: [f32; 2],
+}
+
+fn create_render_rect(
+    device: &wgpu::Device,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    position: [f32; 2],
+    size: [f32; 2],
+    screen_size: [f32; 2],
+) -> RenderRect {
+    let uniform = PlayerUniform {
+        position,
+        player_size: size,
+        screen_size,
+        _padding: [0.0; 2],
+    };
+
+    let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Rect Uniform Buffer"),
+        contents: bytemuck::bytes_of(&uniform),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("Rect Bind Group"),
+        layout: bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: uniform_buffer.as_entire_binding(),
+        }],
+    });
+
+    RenderRect {
+        uniform_buffer,
+        bind_group,
+    }
 }
 
 /// Fixed-timestep clock state.
@@ -216,8 +261,9 @@ struct State {
 
     // Once we have a `World` and `Player`, they'll go here so `State` owns
     player: Player,
-    player_uniform_buffer: wgpu::Buffer,
-    player_bind_group: wgpu::BindGroup,
+    player_render_rect: RenderRect,
+    items: Vec<RectObject>,
+    items_render_rects: Vec<RenderRect>,
 }
 
 impl State {
@@ -232,8 +278,23 @@ impl State {
         let size = window.inner_size(); 
         let player = Player {
             position: [5.0, 5.0],
-            size: [790.0, 590.0],
+            size: [70.0, 100.0],
         };
+
+        let items = vec![
+            RectObject {
+                position: [300.0, 300.0],
+                size: [100.0, 150.0],
+            },
+            RectObject {
+                position: [400.0, 300.0],
+                size: [100.0, 150.0],
+            },
+            RectObject {
+                position: [550.0, 300.0],
+                size: [100.0, 150.0],
+            },
+        ];
 
         // The Instance is the wgpu entry point; defaults pick the
         // platform's preferred backend (DX12 on Windows, Metal on macOS,
@@ -301,20 +362,6 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let player_uniform = PlayerUniform {
-            position: player.position,
-            screen_size: [config.width as f32, config.height as f32],
-            player_size: player.size,
-            _padding: [0.0; 2],
-        };
-
-        let player_uniform_buffer =
-            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Player Uniform Buffer"),
-                contents: bytemuck::bytes_of(&player_uniform),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            });
-
         let vertex_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("Vertex Buffer"),
@@ -334,7 +381,6 @@ impl State {
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
-
         let player_bind_group_layout =
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Player Bind Group Layout"),
@@ -351,18 +397,28 @@ impl State {
                 },
             ],
         });
+        
 
-        let player_bind_group =
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Player Bind Group"),
-            layout: &player_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0, 
-                    resource: player_uniform_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let player_render_rect = create_render_rect(
+            &device,
+            &player_bind_group_layout,
+            player.position,
+            player.size,
+            [config.width as f32, config.height as f32],
+        );
+
+        let items_render_rects: Vec<RenderRect> = items
+        .iter()
+        .map(|item| {
+            create_render_rect(
+                &device,
+                &player_bind_group_layout,
+                item.position,
+                item.size,
+                [config.width as f32, config.height as f32],
+            )
+        })
+        .collect();
 
         let render_pipeline_layout =
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -423,8 +479,9 @@ impl State {
             index_buffer,
             ///////////////////////////
             player,
-            player_uniform_buffer,
-            player_bind_group,
+            player_render_rect,
+            items,
+            items_render_rects
 
         }
     }
@@ -451,21 +508,7 @@ impl State {
     fn update(&mut self) {
         // Simulation update would go here once we have a `World` and
         // `Player` to update.
-        let player_uniform = PlayerUniform {
-            position: [
-                self.player.position[0],
-                self.player.position[1],
-            ],
-            player_size: self.player.size, 
-            screen_size: [self.config.width as f32, self.config.height as f32],
-            _padding: [0.0; 2],    
-        };
 
-        self.queue.write_buffer(
-            &self.player_uniform_buffer,
-            0,
-            bytemuck::bytes_of(&player_uniform),
-        );
     }
 
     /// Draw a single frame. For now: clear the swapchain image to a dark
@@ -556,15 +599,49 @@ impl State {
                 multiview_mask: None,
                 
             });
+
+
             // _pass is dropped here, ending the render pass. wgpu records
             // an `EndRenderPass` command at this point.
             _pass.set_pipeline(&self.render_pipeline); // 2.
-            _pass.set_bind_group(0, &self.player_bind_group, &[]);
             _pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             _pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            _pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.
+
+            
+            let player_uniform = PlayerUniform {
+                position: self.player.position,
+                screen_size: [self.config.width as f32, self.config.height as f32],
+                player_size: self.player.size,
+                _padding: [0.0; 2],
+            };
+            
+            self.queue.write_buffer(
+                &self.player_render_rect.uniform_buffer,
+                0,
+                bytemuck::bytes_of(&player_uniform),
+                );
+
+            _pass.set_bind_group(0, &self.player_render_rect.bind_group, &[]);
+            _pass.draw_indexed(0..self.num_indices, 0, 0..1);
+
+            for (item, render_rect) in self.items.iter().zip(self.items_render_rects.iter()) {
+                let item_uniform = PlayerUniform {
+                    position: item.position,
+                    player_size: item.size,
+                    screen_size: [self.config.width as f32, self.config.height as f32],
+                    _padding: [0.0; 2],
+                };
+
+                self.queue.write_buffer(
+                    &render_rect.uniform_buffer,
+                    0,
+                    bytemuck::bytes_of(&item_uniform),
+                );
+
+                _pass.set_bind_group(0, &render_rect.bind_group, &[]);
+                _pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            }
         }
-        
         self.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
     }

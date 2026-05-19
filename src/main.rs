@@ -64,16 +64,6 @@ impl World {
 }
 
 
-
-
-
-
-
-
-
-
-
-
 // ---------------------------------------------------------------------------
 // Fixed-timestep simulation clock — Glenn Fiedler, "Fix Your Timestep!".
 //   https://gafferongames.com/post/fix_your_timestep/
@@ -491,7 +481,7 @@ impl State {
             let player_uniform = RectUniform {
                 position: self.world.player.rect.position(),
                 screen_size: [self.config.width as f32, self.config.height as f32],
-                player_size: self.world.player.rect.size(),
+                size: self.world.player.rect.size(),
                 _padding: [0.0; 2],
             };
             
@@ -507,7 +497,7 @@ impl State {
             for (item, render_rect) in self.world.items.iter().zip(self.world.items.iter().map(|item| &item.render_rect)) {
                 let item_uniform = RectUniform {
                     position: item.position(),
-                    player_size: item.size(),
+                    size: item.size(),
                     screen_size: [self.config.width as f32, self.config.height as f32],
                     _padding: [0.0; 2],
                 };

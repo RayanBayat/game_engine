@@ -7,6 +7,16 @@ pub struct Rect {
     pub render_rect: RenderRect,
 }
 
+pub struct RectObject {
+    pub position: [f32; 2],
+    pub size: [f32; 2],
+}
+
+pub struct RenderRect {
+    pub uniform_buffer: wgpu::Buffer,
+    pub bind_group: wgpu::BindGroup,
+}
+
 impl Rect {
     pub fn new(position: [f32; 2], size: [f32; 2], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2]) -> Self {
         Rect {
@@ -30,29 +40,12 @@ impl Rect {
 
 }
 
-pub struct RectObject {
-    pub position: [f32; 2],
-    pub size: [f32; 2],
-}
-
-impl RectObject {
-    pub fn new(position: [f32; 2], size: [f32; 2]) -> Self {
-        RectObject { position, size }
-    }
-}
-
-pub struct RenderRect {
-    pub uniform_buffer: wgpu::Buffer,
-    pub bind_group: wgpu::BindGroup,
-}
-
-
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct RectUniform {
     pub position: [f32; 2],
     pub screen_size: [f32; 2],
-    pub player_size: [f32; 2],
+    pub size: [f32; 2],
     pub _padding: [f32; 2],
 }
 
@@ -65,7 +58,7 @@ pub fn create_render_rect(
 ) -> RenderRect {
     let uniform = RectUniform {
         position,
-        player_size: size,
+        size,
         screen_size,
         _padding: [0.0; 2],
     };

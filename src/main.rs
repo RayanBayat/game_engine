@@ -14,6 +14,14 @@
 //!   - winit `ApplicationHandler` trait — modern entry-point shape
 //!     https://docs.rs/winit/0.30.13/winit/application/trait.ApplicationHandler.html
 
+pub mod player;
+pub mod rect;
+pub mod vertex;
+
+use crate::player::{Player};
+use crate::rect::{RectUniform, Rect, VERTICES, INDICES};
+use crate::vertex::Vertex;
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -23,7 +31,48 @@ use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
-use winit::keyboard::{PhysicalKey, KeyCode};
+use winit::keyboard::{PhysicalKey};
+
+struct World {
+    player: Player,
+    items: Vec<Rect>,
+}
+
+
+impl World {
+    pub fn new(
+        device: &wgpu::Device,
+        rect_bind_group_layout: &wgpu::BindGroupLayout,
+        screen_size: [f32; 2],
+    ) -> Self {
+        let player = Player::new(
+            [5.0, 5.0],
+            [70.0, 100.0],
+            device,
+            rect_bind_group_layout,
+            screen_size,
+        );
+
+        let items = vec![
+            Rect::new([300.0, 300.0], [100.0, 150.0], device, rect_bind_group_layout, screen_size),
+            Rect::new([400.0, 300.0], [100.0, 150.0], device, rect_bind_group_layout, screen_size),
+            Rect::new([550.0, 150.0], [100.0, 150.0], device, rect_bind_group_layout, screen_size),
+        ];
+
+        Self { player, items }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
 
 // ---------------------------------------------------------------------------
 // Fixed-timestep simulation clock — Glenn Fiedler, "Fix Your Timestep!".
@@ -57,89 +106,6 @@ const FIXED_DT: Duration = Duration::from_nanos(16_666_667);
 /// "spiral of death". 250 ms is the canonical value from the article.
 const MAX_FRAME_TIME: Duration = Duration::from_millis(250);
 
-struct RectObject {
-    position: [f32; 2],
-    size: [f32; 2],
-}
-
-struct Player {
-    position: [f32; 2],
-    size: [f32; 2],
-}
-
-struct RenderRect {
-    uniform_buffer: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
-}
-
-impl Player {
-
-    fn handle_key(&mut self, code: KeyCode) -> bool {
-        match code {
-            KeyCode::KeyW | KeyCode::ArrowUp => {
-                self.position[1] -= 2.0; // Move up by 0.1 units
-                true
-            }
-            KeyCode::KeyA | KeyCode::ArrowLeft => {
-                self.position[0] -= 2.0; // Move left by 0.1 units
-                true
-            }
-            KeyCode::KeyS | KeyCode::ArrowDown => {
-                self.position[1] += 2.0; // Move down by 0.1 units
-                true
-            }
-            KeyCode::KeyD | KeyCode::ArrowRight => {
-                self.position[0] += 2.0; // Move right by 0.1 units
-                true
-            }
-            _ => false,
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct PlayerUniform {
-    position: [f32; 2],
-    screen_size: [f32; 2],
-    player_size: [f32; 2],
-    _padding: [f32; 2],
-}
-
-fn create_render_rect(
-    device: &wgpu::Device,
-    bind_group_layout: &wgpu::BindGroupLayout,
-    position: [f32; 2],
-    size: [f32; 2],
-    screen_size: [f32; 2],
-) -> RenderRect {
-    let uniform = PlayerUniform {
-        position,
-        player_size: size,
-        screen_size,
-        _padding: [0.0; 2],
-    };
-
-    let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Rect Uniform Buffer"),
-        contents: bytemuck::bytes_of(&uniform),
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-    });
-
-    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("Rect Bind Group"),
-        layout: bind_group_layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: uniform_buffer.as_entire_binding(),
-        }],
-    });
-
-    RenderRect {
-        uniform_buffer,
-        bind_group,
-    }
-}
 
 /// Fixed-timestep clock state.
 ///
@@ -153,50 +119,6 @@ struct Clock {
     last_instant: Option<Instant>,
     accumulator: Duration,
 }
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    position: [f32; 3],
-    color: [f32; 3],
-}
-
-// lib.rs
-impl Vertex {
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x3,
-                }
-            ]
-        }
-    }
-}
-
-const VERTICES: &[Vertex] = &[
-    Vertex { position: [1.0, 0.0, 0.0], color: [1.0, 0.0, 0.0] },
-    Vertex { position: [0.0, 0.0, 0.0], color: [0.0, 1.0, 0.0] },
-    Vertex { position: [0.0, 1.0, 0.0], color: [0.0, 0.0, 1.0] },
-    Vertex { position: [1.0, 1.0, 0.0], color: [1.0, 1.0, 1.0] },
-];
-
-const INDICES: &[u16] = &[
-    0, 1, 3, // triangle 1
-    1, 2, 3, // triangle 2
-];
-
-
-
 
 /// Result of advancing the clock by one redraw's worth of wall time.
 struct Tick {
@@ -256,14 +178,13 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     window: Arc<Window>,
     render_pipeline: wgpu::RenderPipeline,
+
+    // Vertex and index buffers for our rectangle geometry
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer, 
 
     // Once we have a `World` and `Player`, they'll go here so `State` owns
-    player: Player,
-    player_render_rect: RenderRect,
-    items: Vec<RectObject>,
-    items_render_rects: Vec<RenderRect>,
+    world: World,
 }
 
 impl State {
@@ -276,25 +197,6 @@ impl State {
     async fn new(window: Arc<Window>) -> Self {
         let num_indices = INDICES.len() as u32;
         let size = window.inner_size(); 
-        let player = Player {
-            position: [5.0, 5.0],
-            size: [70.0, 100.0],
-        };
-
-        let items = vec![
-            RectObject {
-                position: [300.0, 300.0],
-                size: [100.0, 150.0],
-            },
-            RectObject {
-                position: [400.0, 300.0],
-                size: [100.0, 150.0],
-            },
-            RectObject {
-                position: [550.0, 300.0],
-                size: [100.0, 150.0],
-            },
-        ];
 
         // The Instance is the wgpu entry point; defaults pick the
         // platform's preferred backend (DX12 on Windows, Metal on macOS,
@@ -381,9 +283,9 @@ impl State {
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
-        let player_bind_group_layout =
+        let rect_bind_group_layout =
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Player Bind Group Layout"),
+            label: Some("Rect Bind Group Layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -397,33 +299,14 @@ impl State {
                 },
             ],
         });
-        
 
-        let player_render_rect = create_render_rect(
-            &device,
-            &player_bind_group_layout,
-            player.position,
-            player.size,
-            [config.width as f32, config.height as f32],
-        );
-
-        let items_render_rects: Vec<RenderRect> = items
-        .iter()
-        .map(|item| {
-            create_render_rect(
-                &device,
-                &player_bind_group_layout,
-                item.position,
-                item.size,
-                [config.width as f32, config.height as f32],
-            )
-        })
-        .collect();
+        // TODO: Move this out into a `World` struct once we have one.
+        let world = World::new(&device, &rect_bind_group_layout, [config.width as f32, config.height as f32],);
 
         let render_pipeline_layout =
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[Some(&player_bind_group_layout)],
+            bind_group_layouts: &[Some(&rect_bind_group_layout)],
             immediate_size: 0,
         });
 
@@ -477,12 +360,9 @@ impl State {
             render_pipeline,
             vertex_buffer,
             index_buffer,
-            ///////////////////////////
-            player,
-            player_render_rect,
-            items,
-            items_render_rects
 
+            ///////////////////////////
+            world,
         }
     }
 
@@ -608,26 +488,26 @@ impl State {
             _pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
             
-            let player_uniform = PlayerUniform {
-                position: self.player.position,
+            let player_uniform = RectUniform {
+                position: self.world.player.rect.position(),
                 screen_size: [self.config.width as f32, self.config.height as f32],
-                player_size: self.player.size,
+                player_size: self.world.player.rect.size(),
                 _padding: [0.0; 2],
             };
             
             self.queue.write_buffer(
-                &self.player_render_rect.uniform_buffer,
+                &self.world.player.rect.render_rect.uniform_buffer,
                 0,
                 bytemuck::bytes_of(&player_uniform),
                 );
 
-            _pass.set_bind_group(0, &self.player_render_rect.bind_group, &[]);
+            _pass.set_bind_group(0, &self.world.player.rect.render_rect.bind_group, &[]);
             _pass.draw_indexed(0..self.num_indices, 0, 0..1);
 
-            for (item, render_rect) in self.items.iter().zip(self.items_render_rects.iter()) {
-                let item_uniform = PlayerUniform {
-                    position: item.position,
-                    player_size: item.size,
+            for (item, render_rect) in self.world.items.iter().zip(self.world.items.iter().map(|item| &item.render_rect)) {
+                let item_uniform = RectUniform {
+                    position: item.position(),
+                    player_size: item.size(),
                     screen_size: [self.config.width as f32, self.config.height as f32],
                     _padding: [0.0; 2],
                 };
@@ -698,7 +578,7 @@ impl ApplicationHandler for App {
                 // physical keyboard key
                 match event.physical_key {
                     PhysicalKey::Code(code) => {
-                        state.player.handle_key(code);
+                        state.world.player.handle_key(code);
                     }
 
                     _ => {}
@@ -755,76 +635,6 @@ fn main() {
     event_loop
         .run_app(&mut app)
         .expect("event loop terminated with error");
-}
 
 
-// ---------------------------------------------------------------------------
-// Unit tests — run with `cargo test`.
-//
-// These live in a child module of the binary so they can see private items
-// (`Clock`, `FIXED_DT`, ...). Integration tests that exercise public API
-// surface live in the top-level `tests/` directory; right now there is no
-// public API to test from outside, see `tests/integration_smoke.rs`.
-//
-// The `#[cfg(test)]` attribute means this module is only compiled when
-// running tests — zero cost in `cargo build` / `cargo run`.
-// ---------------------------------------------------------------------------
-#[cfg(test)]
-mod tests {
-    use super::{Clock, Duration, FIXED_DT, MAX_FRAME_TIME};
-
-    /// Sanity-check the simulation rate constant.
-    /// 16.666... ms per tick = 60 Hz; allow a 1 µs slack for rounding.
-    #[test]
-    fn fixed_dt_is_60_hz() {
-        let nanos = FIXED_DT.as_nanos();
-        assert!(nanos > 16_660_000, "FIXED_DT too short: {nanos} ns");
-        assert!(nanos < 16_670_000, "FIXED_DT too long: {nanos} ns");
-    }
-
-    /// `Clock::default()` should leave us in a clean "no prior frame" state.
-    #[test]
-    fn clock_default_starts_empty() {
-        let clock = Clock::default();
-        assert!(clock.last_instant.is_none());
-        assert_eq!(clock.accumulator, Duration::ZERO);
-    }
-
-    /// First call to `tick()` happens with `last_instant = None`, so the
-    /// computed `frame_time` is ZERO. With no preloaded accumulator the
-    /// loop body should never execute.
-    #[test]
-    fn first_tick_runs_no_steps() {
-        let mut clock = Clock::default();
-        let tick = clock.tick();
-        assert_eq!(tick.steps, 0);
-        assert!(tick.alpha.abs() < f32::EPSILON);
-        assert!(clock.last_instant.is_some());
-    }
-
-    /// Pre-load the accumulator with 3 full ticks + some leftover, then
-    /// `tick()`. Because `last_instant = None` on the first call the
-    /// elapsed wall-time term is zero, so we can assert exactly on the
-    /// drained counts. This is the algorithmic core of the fixed-timestep
-    /// loop.
-    #[test]
-    fn accumulator_drains_in_fixed_dt_chunks() {
-        let leftover = Duration::from_millis(5);
-        let mut clock = Clock {
-            last_instant: None,
-            accumulator: FIXED_DT * 3 + leftover,
-        };
-        let tick = clock.tick();
-        assert_eq!(tick.steps, 3);
-        assert_eq!(clock.accumulator, leftover);
-        // alpha = leftover / FIXED_DT — should be in [0, 1).
-        assert!(tick.alpha >= 0.0 && tick.alpha < 1.0);
-    }
-
-    /// MAX_FRAME_TIME exists to prevent Fiedler's "spiral of death".
-    /// Verify it's set to the canonical 250 ms from the article.
-    #[test]
-    fn max_frame_time_is_250_ms() {
-        assert_eq!(MAX_FRAME_TIME, Duration::from_millis(250));
-    }
 }

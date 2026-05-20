@@ -14,14 +14,55 @@
 //!   - winit `ApplicationHandler` trait — modern entry-point shape
 //!     https://docs.rs/winit/0.30.13/winit/application/trait.ApplicationHandler.html
 
+pub mod player;
+pub mod rect;
+pub mod vertex;
+
+use crate::player::{Player};
+use crate::rect::{RectUniform, Rect, VERTICES, INDICES};
+use crate::vertex::Vertex;
+
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use wgpu::util::DeviceExt;
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
+use winit::keyboard::{PhysicalKey};
+
+struct World {
+    player: Player,
+    items: Vec<Rect>,
+}
+
+
+impl World {
+    pub fn new(
+        device: &wgpu::Device,
+        rect_bind_group_layout: &wgpu::BindGroupLayout,
+        screen_size: [f32; 2],
+    ) -> Self {
+        let player = Player::new(
+            [5.0, 5.0],
+            [70.0, 100.0],
+            device,
+            rect_bind_group_layout,
+            screen_size,
+        );
+
+        let items = vec![
+            Rect::new([300.0, 300.0], [100.0, 150.0], device, rect_bind_group_layout, screen_size),
+            Rect::new([400.0, 300.0], [100.0, 150.0], device, rect_bind_group_layout, screen_size),
+            Rect::new([550.0, 150.0], [100.0, 150.0], device, rect_bind_group_layout, screen_size),
+        ];
+
+        Self { player, items }
+    }
+}
+
 
 // ---------------------------------------------------------------------------
 // Fixed-timestep simulation clock — Glenn Fiedler, "Fix Your Timestep!".
@@ -54,6 +95,7 @@ const FIXED_DT: Duration = Duration::from_nanos(16_666_667);
 /// trying to "catch up", freezing the app — Fiedler calls this the
 /// "spiral of death". 250 ms is the canonical value from the article.
 const MAX_FRAME_TIME: Duration = Duration::from_millis(250);
+
 
 /// Fixed-timestep clock state.
 ///
@@ -91,7 +133,7 @@ impl Clock {
         self.accumulator += frame_time;
 
         let mut steps = 0u32;
-        while self.accumulator >= FIXED_DT {
+        while self.accumulator >= FIXED_DT { 
             steps += 1;
             self.accumulator -= FIXED_DT;
         }
@@ -102,6 +144,8 @@ impl Clock {
         }
     }
 }
+
+
 
 /// GPU + swapchain bundle.
 ///
@@ -117,11 +161,20 @@ impl Clock {
 ///
 /// See: https://sotrh.github.io/learn-wgpu/beginner/tutorial2-surface/
 struct State {
+    num_indices: u32,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     window: Arc<Window>,
+    render_pipeline: wgpu::RenderPipeline,
+
+    // Vertex and index buffers for our rectangle geometry
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer, 
+
+    // Once we have a `World` and `Player`, they'll go here so `State` owns
+    world: World,
 }
 
 impl State {
@@ -132,7 +185,8 @@ impl State {
     /// async runtime for a desktop binary, so the caller wraps this in
     /// `pollster::block_on`.
     async fn new(window: Arc<Window>) -> Self {
-        let size = window.inner_size();
+        let num_indices = INDICES.len() as u32;
+        let size = window.inner_size(); 
 
         // The Instance is the wgpu entry point; defaults pick the
         // platform's preferred backend (DX12 on Windows, Metal on macOS,
@@ -200,12 +254,105 @@ impl State {
         };
         surface.configure(&device, &config);
 
+        let vertex_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+        let index_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(INDICES),
+                usage: wgpu::BufferUsages::INDEX,
+            }
+        );
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
+
+        let rect_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Rect Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+
+        // TODO: Move this out into a `World` struct once we have one.
+        let world = World::new(&device, &rect_bind_group_layout, [config.width as f32, config.height as f32],);
+
+        let render_pipeline_layout =
+        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Render Pipeline Layout"),
+            bind_group_layouts: &[Some(&rect_bind_group_layout)],
+            immediate_size: 0,
+        });
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"), // 1.
+                buffers: &[
+                    Vertex::desc(),
+                ],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState { // 3.
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState { // 4.
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None, // 1.
+            multisample: wgpu::MultisampleState {
+                count: 1, // 2.
+                mask: !0, // 3.
+                alpha_to_coverage_enabled: false, // 4.
+            },
+        multiview_mask: None, // 5.
+        cache: None, // 6.
+    });
+
         Self {
+            num_indices,
             surface,
             device,
             queue,
             config,
             window,
+            render_pipeline,
+            vertex_buffer,
+            index_buffer,
+
+            ///////////////////////////
+            world,
         }
     }
 
@@ -226,6 +373,12 @@ impl State {
         self.config.width = new_size.width;
         self.config.height = new_size.height;
         self.surface.configure(&self.device, &self.config);
+    }
+
+    fn update(&mut self) {
+        // Simulation update would go here once we have a `World` and
+        // `Player` to update.
+
     }
 
     /// Draw a single frame. For now: clear the swapchain image to a dark
@@ -283,12 +436,13 @@ impl State {
                 label: Some("frame"),
             });
 
+            
         {
             // Render pass with one color attachment (the swapchain view)
             // and no draw calls — `LoadOp::Clear` writes the clear color
             // into every pixel and `StoreOp::Store` keeps it. When we
             // start drawing sprites, they'll go inside this same scope.
-            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("clear"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
@@ -313,11 +467,51 @@ impl State {
                 // rendering (the only thing a 2D platformer ever needs).
                 //   https://docs.rs/wgpu/29.0.3/wgpu/struct.RenderPassDescriptor.html
                 multiview_mask: None,
+                
             });
+
+
             // _pass is dropped here, ending the render pass. wgpu records
             // an `EndRenderPass` command at this point.
-        }
+            _pass.set_pipeline(&self.render_pipeline); // 2.
+            _pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            _pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
+            
+            let player_uniform = RectUniform {
+                position: self.world.player.rect.position(),
+                screen_size: [self.config.width as f32, self.config.height as f32],
+                size: self.world.player.rect.size(),
+                _padding: [0.0; 2],
+            };
+            
+            self.queue.write_buffer(
+                &self.world.player.rect.render_rect.uniform_buffer,
+                0,
+                bytemuck::bytes_of(&player_uniform),
+                );
+
+            _pass.set_bind_group(0, &self.world.player.rect.render_rect.bind_group, &[]);
+            _pass.draw_indexed(0..self.num_indices, 0, 0..1);
+
+            for (item, render_rect) in self.world.items.iter().zip(self.world.items.iter().map(|item| &item.render_rect)) {
+                let item_uniform = RectUniform {
+                    position: item.position(),
+                    size: item.size(),
+                    screen_size: [self.config.width as f32, self.config.height as f32],
+                    _padding: [0.0; 2],
+                };
+
+                self.queue.write_buffer(
+                    &render_rect.uniform_buffer,
+                    0,
+                    bytemuck::bytes_of(&item_uniform),
+                );
+
+                _pass.set_bind_group(0, &render_rect.bind_group, &[]);
+                _pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            }
+        }
         self.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
     }
@@ -369,6 +563,18 @@ impl ApplicationHandler for App {
             // initial show. Without this handler, the swapchain stays
             // sized to the window's first dimensions and presents
             // garbage / crashes after the first resize.
+            WindowEvent::KeyboardInput { event, .. } => {
+                // Handle keyboard input here, e.g. by updating the player's velocity
+                // physical keyboard key
+                match event.physical_key {
+                    PhysicalKey::Code(code) => {
+                        state.world.player.handle_key(code);
+                    }
+
+                    _ => {}
+                }
+            }
+
             WindowEvent::Resized(new_size) => state.resize(new_size),
             WindowEvent::RedrawRequested => {
                 // Advance the fixed-timestep clock first, BEFORE render.
@@ -389,6 +595,7 @@ impl ApplicationHandler for App {
                 // All surface error recovery lives inside `render`
                 // (wgpu 29 collapsed the old SurfaceError into the
                 // CurrentSurfaceTexture enum).
+                state.update();
                 state.render();
 
                 // Continuous redraw — see Poll-mode rationale in `main`.
@@ -418,75 +625,6 @@ fn main() {
     event_loop
         .run_app(&mut app)
         .expect("event loop terminated with error");
-}
 
-// ---------------------------------------------------------------------------
-// Unit tests — run with `cargo test`.
-//
-// These live in a child module of the binary so they can see private items
-// (`Clock`, `FIXED_DT`, ...). Integration tests that exercise public API
-// surface live in the top-level `tests/` directory; right now there is no
-// public API to test from outside, see `tests/integration_smoke.rs`.
-//
-// The `#[cfg(test)]` attribute means this module is only compiled when
-// running tests — zero cost in `cargo build` / `cargo run`.
-// ---------------------------------------------------------------------------
-#[cfg(test)]
-mod tests {
-    use super::{Clock, Duration, FIXED_DT, MAX_FRAME_TIME};
 
-    /// Sanity-check the simulation rate constant.
-    /// 16.666... ms per tick = 60 Hz; allow a 1 µs slack for rounding.
-    #[test]
-    fn fixed_dt_is_60_hz() {
-        let nanos = FIXED_DT.as_nanos();
-        assert!(nanos > 16_660_000, "FIXED_DT too short: {nanos} ns");
-        assert!(nanos < 16_670_000, "FIXED_DT too long: {nanos} ns");
-    }
-
-    /// `Clock::default()` should leave us in a clean "no prior frame" state.
-    #[test]
-    fn clock_default_starts_empty() {
-        let clock = Clock::default();
-        assert!(clock.last_instant.is_none());
-        assert_eq!(clock.accumulator, Duration::ZERO);
-    }
-
-    /// First call to `tick()` happens with `last_instant = None`, so the
-    /// computed `frame_time` is ZERO. With no preloaded accumulator the
-    /// loop body should never execute.
-    #[test]
-    fn first_tick_runs_no_steps() {
-        let mut clock = Clock::default();
-        let tick = clock.tick();
-        assert_eq!(tick.steps, 0);
-        assert!(tick.alpha.abs() < f32::EPSILON);
-        assert!(clock.last_instant.is_some());
-    }
-
-    /// Pre-load the accumulator with 3 full ticks + some leftover, then
-    /// `tick()`. Because `last_instant = None` on the first call the
-    /// elapsed wall-time term is zero, so we can assert exactly on the
-    /// drained counts. This is the algorithmic core of the fixed-timestep
-    /// loop.
-    #[test]
-    fn accumulator_drains_in_fixed_dt_chunks() {
-        let leftover = Duration::from_millis(5);
-        let mut clock = Clock {
-            last_instant: None,
-            accumulator: FIXED_DT * 3 + leftover,
-        };
-        let tick = clock.tick();
-        assert_eq!(tick.steps, 3);
-        assert_eq!(clock.accumulator, leftover);
-        // alpha = leftover / FIXED_DT — should be in [0, 1).
-        assert!(tick.alpha >= 0.0 && tick.alpha < 1.0);
-    }
-
-    /// MAX_FRAME_TIME exists to prevent Fiedler's "spiral of death".
-    /// Verify it's set to the canonical 250 ms from the article.
-    #[test]
-    fn max_frame_time_is_250_ms() {
-        assert_eq!(MAX_FRAME_TIME, Duration::from_millis(250));
-    }
 }

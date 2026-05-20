@@ -17,10 +17,12 @@
 pub mod player;
 pub mod rect;
 pub mod vertex;
+pub mod util;
+pub mod world;
 
-use crate::player::{Player};
-use crate::rect::{RectUniform, Rect, VERTICES, INDICES};
+use crate::rect::{RectUniform, VERTICES, INDICES};
 use crate::vertex::Vertex;
+use crate::world::{World};
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -32,37 +34,6 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 use winit::keyboard::{PhysicalKey};
-
-struct World {
-    player: Player,
-    items: Vec<Rect>,
-}
-
-
-impl World {
-    pub fn new(
-        device: &wgpu::Device,
-        rect_bind_group_layout: &wgpu::BindGroupLayout,
-        screen_size: [f32; 2],
-    ) -> Self {
-        let player = Player::new(
-            [5.0, 5.0],
-            [70.0, 100.0],
-            device,
-            rect_bind_group_layout,
-            screen_size,
-        );
-
-        let items = vec![
-            Rect::new([300.0, 300.0], [100.0, 150.0], device, rect_bind_group_layout, screen_size),
-            Rect::new([400.0, 300.0], [100.0, 150.0], device, rect_bind_group_layout, screen_size),
-            Rect::new([550.0, 150.0], [100.0, 150.0], device, rect_bind_group_layout, screen_size),
-        ];
-
-        Self { player, items }
-    }
-}
-
 
 // ---------------------------------------------------------------------------
 // Fixed-timestep simulation clock — Glenn Fiedler, "Fix Your Timestep!".
@@ -268,6 +239,7 @@ impl State {
                 usage: wgpu::BufferUsages::INDEX,
             }
         );
+
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
@@ -291,7 +263,8 @@ impl State {
         });
 
         // TODO: Move this out into a `World` struct once we have one.
-        let world = World::new(&device, &rect_bind_group_layout, [config.width as f32, config.height as f32],);
+        let mut world = World::new(&device, &rect_bind_group_layout, [config.width as f32, config.height as f32],);
+        world.read_world(&device, &rect_bind_group_layout);
 
         let render_pipeline_layout =
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -348,6 +321,8 @@ impl State {
             config,
             window,
             render_pipeline,
+
+            ///////////////////////////
             vertex_buffer,
             index_buffer,
 
@@ -378,6 +353,9 @@ impl State {
     fn update(&mut self) {
         // Simulation update would go here once we have a `World` and
         // `Player` to update.
+        self.world.player.update(FIXED_DT.as_secs_f32());
+        self.world.wall_collision();
+        self.world.object_to_player_collision();
 
     }
 
@@ -477,11 +455,30 @@ impl State {
             _pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             _pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-            
+            for item in self.world.items.iter() {
+                let item_uniform = RectUniform {
+                    position: item.position(),
+                    size: item.size(),
+                    color: item.color(),
+                    screen_size: [self.config.width as f32, self.config.height as f32],
+                    _padding: [0.0; 2],
+                };
+
+                self.queue.write_buffer(
+                    &item.render_rect.uniform_buffer,
+                    0,
+                    bytemuck::bytes_of(&item_uniform),
+                );
+
+                _pass.set_bind_group(0, &item.render_rect.bind_group, &[]);
+                _pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            }
+
             let player_uniform = RectUniform {
                 position: self.world.player.rect.position(),
                 screen_size: [self.config.width as f32, self.config.height as f32],
                 size: self.world.player.rect.size(),
+                color: self.world.player.rect.color(),
                 _padding: [0.0; 2],
             };
             
@@ -494,23 +491,6 @@ impl State {
             _pass.set_bind_group(0, &self.world.player.rect.render_rect.bind_group, &[]);
             _pass.draw_indexed(0..self.num_indices, 0, 0..1);
 
-            for (item, render_rect) in self.world.items.iter().zip(self.world.items.iter().map(|item| &item.render_rect)) {
-                let item_uniform = RectUniform {
-                    position: item.position(),
-                    size: item.size(),
-                    screen_size: [self.config.width as f32, self.config.height as f32],
-                    _padding: [0.0; 2],
-                };
-
-                self.queue.write_buffer(
-                    &render_rect.uniform_buffer,
-                    0,
-                    bytemuck::bytes_of(&item_uniform),
-                );
-
-                _pass.set_bind_group(0, &render_rect.bind_group, &[]);
-                _pass.draw_indexed(0..self.num_indices, 0, 0..1);
-            }
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
@@ -568,7 +548,7 @@ impl ApplicationHandler for App {
                 // physical keyboard key
                 match event.physical_key {
                     PhysicalKey::Code(code) => {
-                        state.world.player.handle_key(code);
+                        state.world.player.handle_key(code, event);
                     }
 
                     _ => {}

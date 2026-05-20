@@ -10,6 +10,7 @@ pub struct Rect {
 pub struct RectObject {
     pub position: [f32; 2],
     pub size: [f32; 2],
+    pub color: [f32; 4],
 }
 
 pub struct RenderRect {
@@ -18,10 +19,10 @@ pub struct RenderRect {
 }
 
 impl Rect {
-    pub fn new(position: [f32; 2], size: [f32; 2], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2]) -> Self {
+    pub fn new(position: [f32; 2], size: [f32; 2], color: [f32; 4], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2]) -> Self {
         Rect {
-            rect_object: RectObject { position, size },
-            render_rect: create_render_rect(device, bind_group_layout, position, size, screen_size),
+            rect_object: RectObject { position, size, color },
+            render_rect: create_render_rect(device, bind_group_layout, position, size, screen_size, color),
         }
     }
 
@@ -33,11 +34,18 @@ impl Rect {
         self.rect_object.size
     }
 
+    pub fn color(&self) -> [f32; 4] {
+        self.rect_object.color
+    }
+
     pub fn move_by(&mut self, delta: [f32; 2]) {
         self.rect_object.position[0] += delta[0];
         self.rect_object.position[1] += delta[1];
     }
 
+    pub fn move_to(&mut self, new_position: [f32; 2]) {
+        self.rect_object.position = new_position;
+    }
 }
 
 #[repr(C)]
@@ -47,6 +55,8 @@ pub struct RectUniform {
     pub screen_size: [f32; 2],
     pub size: [f32; 2],
     pub _padding: [f32; 2],
+
+    pub color: [f32; 4],
 }
 
 pub fn create_render_rect(
@@ -55,12 +65,16 @@ pub fn create_render_rect(
     position: [f32; 2],
     size: [f32; 2],
     screen_size: [f32; 2],
+    color: [f32; 4],
 ) -> RenderRect {
     let uniform = RectUniform {
         position,
         size,
         screen_size,
-        _padding: [0.0; 2],
+        color,
+
+
+        _padding: [0.0; 2], // change as needed to ensure 16-byte alignment
     };
 
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

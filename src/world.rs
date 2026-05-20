@@ -1,0 +1,119 @@
+use crate::player::Player;
+use crate::rect::Rect;
+
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+
+pub struct World {
+    pub player: Player,
+    pub items: Vec<Rect>,
+    pub screen_size: [f32; 2],
+    pub dimensions: [i32; 2],
+}
+
+
+impl World {
+    pub fn new(
+        device: &wgpu::Device,
+        rect_bind_group_layout: &wgpu::BindGroupLayout,
+        screen_size: [f32; 2],
+    ) -> Self {
+        
+        let player = Player::new(
+            [5.0, 5.0],
+            [70.0, 100.0],
+            [1.0, 0.0, 0.0, 1.0], // Red color
+            device,
+            rect_bind_group_layout,
+            screen_size,
+        );
+
+        let items = vec![
+            // Rect::new([300.0, 300.0], [100.0, 150.0], [0.0, 1.0, 0.0, 1.0], device, rect_bind_group_layout, screen_size), // Green color
+            // Rect::new([400.0, 300.0], [100.0, 150.0], [1.0, 1.0, 1.0, 1.0], device, rect_bind_group_layout, screen_size),
+            // Rect::new([550.0, 150.0], [100.0, 150.0], [1.0, 1.0, 1.0, 1.0], device, rect_bind_group_layout, screen_size),
+        ];
+
+        Self { player, items, screen_size, dimensions: [10, 10] }
+    }
+
+    pub fn wall_collision(&mut self) {
+        if self.player.rect.position()[0] < 0.0 {
+            self.player.rect.move_to([0.0, self.player.rect.position()[1]]);
+        }
+        if self.player.rect.position()[0] + self.player.rect.size()[0] > self.screen_size[0] {
+            self.player.rect.move_to([self.screen_size[0] - self.player.rect.size()[0], self.player.rect.position()[1]]);
+        }
+        if self.player.rect.position()[1] < 0.0 {
+            self.player.rect.move_to([self.player.rect.position()[0], 0.0]);
+        }
+        if self.player.rect.position()[1] + self.player.rect.size()[1] > self.screen_size[1] {
+            self.player.rect.move_to([self.player.rect.position()[0], self.screen_size[1] - self.player.rect.size()[1]]);
+        }
+    }
+
+    pub fn object_to_player_collision(&mut self) {
+        for wall in self.items.iter() {
+
+            if wall.position()[0] < self.player.rect.position()[0] + self.player.rect.size()[0] &&
+               wall.position()[0] + wall.size()[0] > self.player.rect.position()[0] &&
+               wall.position()[1] < self.player.rect.position()[1] + self.player.rect.size()[1] &&
+               wall.position()[1] + wall.size()[1] > self.player.rect.position()[1] {
+
+                let overlap_left = (self.player.rect.position()[0] + self.player.rect.size()[0]) - wall.position()[0];
+                let overlap_right = (wall.position()[0] + wall.size()[0]) - self.player.rect.position()[0];
+                let overlap_bottom = (wall.position()[1] + wall.size()[1]) - self.player.rect.position()[1];
+                let overlap_top = (self.player.rect.position()[1] + self.player.rect.size()[1]) - wall.position()[1];
+
+                let overlap_x = if overlap_left < overlap_right { -overlap_left } else { overlap_right };
+                let overlap_y = if overlap_top < overlap_bottom { -overlap_top } else { overlap_bottom };
+                let overlap = if overlap_x.abs() < overlap_y.abs() { [overlap_x, 0.0] } else { [0.0, overlap_y] };
+                self.player.rect.move_by(overlap);
+            }
+        }
+    }
+
+    pub fn read_world(&mut self, device: &wgpu::Device, rect_bind_group_layout: &wgpu::BindGroupLayout) {
+        let file = File::open("map.txt").expect("Unable to open world state file");
+        let reader = BufReader::new(file);
+        let mut y = 0;
+        let x_step = self.screen_size[0] / self.dimensions[0] as f32;
+        let y_step = self.screen_size[1] / self.dimensions[1] as f32;
+        for line in reader.lines() {
+            let mut x = 0;
+            for char in line.unwrap().chars() {
+                
+                match char {
+                    '0' => {
+                        // Empty space, do nothing
+                    },
+                    '#' => {
+                        self.items.push(Rect::new(
+                            [x as f32 * x_step, y as f32 * y_step],
+                            [x_step, y_step],
+                            [0.0, 1.0, 0.0, 1.0], // Green color
+                            device,
+                            rect_bind_group_layout,
+                            self.screen_size,
+                        ));
+                    },
+                    'P' => {
+                        self.player = Player::new(
+                            [x as f32 * x_step, y as f32 * y_step],
+                            [70.0, 100.0],
+                            [1.0, 0.0, 0.0, 1.0], // Red color
+                            device,
+                            rect_bind_group_layout,
+                            self.screen_size,
+                        );
+                    },
+                    _ => println!("Unknown character in world state file: {}", char),
+                }
+                x += 1;
+            }
+            y += 1;
+        }
+    }
+
+}
+

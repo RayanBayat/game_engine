@@ -6,3 +6,13 @@ pub fn normalize(v: [f32; 2]) -> [f32; 2] {
         [v[0] / length, v[1] / length]
     }
 }
+
+pub fn clamp(value: f32, min: f32, max: f32) -> f32 {
+    if value < min {
+        min
+    } else if value > max {
+        max
+    } else {
+        value
+    }
+}

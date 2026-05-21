@@ -40,21 +40,26 @@ impl World {
     pub fn wall_collision(&mut self) {
         if self.player.rect.position()[0] < 0.0 {
             self.player.rect.move_to([0.0, self.player.rect.position()[1]]);
+            self.player.velocity[0] = 0.0;
+            
         }
         if self.player.rect.position()[0] + self.player.rect.size()[0] > self.screen_size[0] {
             self.player.rect.move_to([self.screen_size[0] - self.player.rect.size()[0], self.player.rect.position()[1]]);
+            self.player.velocity[0] = 0.0;
         }
         if self.player.rect.position()[1] < 0.0 {
             self.player.rect.move_to([self.player.rect.position()[0], 0.0]);
+            self.player.velocity[1] = 0.0;
         }
         if self.player.rect.position()[1] + self.player.rect.size()[1] > self.screen_size[1] {
             self.player.rect.move_to([self.player.rect.position()[0], self.screen_size[1] - self.player.rect.size()[1]]);
+            self.player.grounded = true;
+            self.player.velocity[1] = 0.0;
         }
     }
 
-    pub fn object_to_player_collision(&mut self) {
+    pub fn object_to_player_collision(&mut self) { 
         for wall in self.items.iter() {
-
             if wall.position()[0] < self.player.rect.position()[0] + self.player.rect.size()[0] &&
                wall.position()[0] + wall.size()[0] > self.player.rect.position()[0] &&
                wall.position()[1] < self.player.rect.position()[1] + self.player.rect.size()[1] &&
@@ -66,11 +71,21 @@ impl World {
                 let overlap_top = (self.player.rect.position()[1] + self.player.rect.size()[1]) - wall.position()[1];
 
                 let overlap_x = if overlap_left < overlap_right { -overlap_left } else { overlap_right };
-                let overlap_y = if overlap_top < overlap_bottom { -overlap_top } else { overlap_bottom };
-                let overlap = if overlap_x.abs() < overlap_y.abs() { [overlap_x, 0.0] } else { [0.0, overlap_y] };
+                let overlap_y = if overlap_top < overlap_bottom { self.player.grounded = true; -overlap_top } else { overlap_bottom };
+                let overlap = if overlap_x.abs() < overlap_y.abs() { self.player.velocity[0] = 0.0; [overlap_x, 0.0] } else { self.player.velocity[1] = 0.0; [0.0, overlap_y] };
                 self.player.rect.move_by(overlap);
             }
         }
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        self.player.update(dt);
+
+        self.player.grounded = false;
+        
+        self.wall_collision();
+        self.object_to_player_collision();
+        
     }
 
     pub fn read_world(&mut self, device: &wgpu::Device, rect_bind_group_layout: &wgpu::BindGroupLayout) {
@@ -114,6 +129,5 @@ impl World {
             y += 1;
         }
     }
-
 }
 

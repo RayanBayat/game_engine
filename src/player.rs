@@ -2,7 +2,7 @@ use winit::keyboard::KeyCode;
 use winit::event::KeyEvent;
 
 use crate::rect;
-use crate::util::normalize;
+use crate::util::{normalize, clamp};
 
 #[derive(Default)]
 pub struct InputState {
@@ -15,11 +15,10 @@ pub struct InputState {
 pub struct Player {
     pub rect: rect::Rect,
     state: InputState,
+    top_speed: f32,
     speed: f32,
-    velocity: [f32; 2],
-    direction: [f32; 2],
-    jump_strength: f32,
-    gravity: f32,
+    friction: f32,
+    pub velocity: [f32; 2],
     pub grounded: bool,
 }
 
@@ -37,13 +36,12 @@ impl Player {
                     color,
                 ),
             },
-            speed: 150.0,
+            top_speed: 150.0, // todo remove magic numbers and put them in a config file or something 
+            speed: 100.0,
+            friction: 0.8,
             state: InputState::default(),
             velocity: [0.0; 2],
-            direction: [0.0; 2],
-            jump_strength: 10000.0,
-            gravity: 0.0,
-            grounded: false,
+            grounded: true,
         }
     }
 
@@ -68,30 +66,37 @@ impl Player {
     }
 
     pub fn update(&mut self, dt: f32) {
-        // Here you can add any additional logic that needs to run every frame, such as collision detection or animations.
-        self.direction = [0.0; 2]; // Reset velocity before applying input
+        let mut direction_x = 0.0;
 
-        if self.state.up {
-            //TODO add a check to see if the player is on the ground before allowing them to jump
-            self.direction[1] = -1.0;
-        }
-        if self.state.down { // dont need to go down, gravity will do that for us
-            self.direction[1] = 1.0;
-        }
         if self.state.left {
-            self.direction[0] = -1.0;
+            direction_x -= 1.0;
         }
+
         if self.state.right {
-            self.direction[0] = 1.0;
+            direction_x += 1.0;
         }
 
-        let direction = normalize(self.direction);
-        self.velocity = [
-            direction[0] * self.speed * dt,
-            direction[1] * self.speed * dt,
-        ];
+        self.velocity[0] += direction_x * self.speed * dt;
 
-        self.velocity[1] += self.gravity * dt;
-        self.rect.move_by(self.velocity)
+        if direction_x == 0.0 {
+            self.velocity[0] *= self.friction;
+        }
+        
+        if self.state.up && self.grounded {
+            self.velocity[1] = -150.0;
+            self.grounded = false;
+        }
+
+        
+        self.velocity[1] += 100.0 * dt;
+
+        self.velocity[0] = clamp(self.velocity[0], -self.top_speed, self.top_speed);
+        self.velocity[1] = clamp(self.velocity[1], -self.top_speed, self.top_speed);
+
+        self.rect.move_by([
+            self.velocity[0] * dt,
+            self.velocity[1] * dt,
+        ]);
+        println!("velocity: {:?}", self.velocity);
     }
 }

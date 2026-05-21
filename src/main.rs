@@ -115,9 +115,6 @@ impl Clock {
         }
     }
 }
-
-
-
 /// GPU + swapchain bundle.
 ///
 /// Holds everything we need to issue a frame:
@@ -353,9 +350,7 @@ impl State {
     fn update(&mut self) {
         // Simulation update would go here once we have a `World` and
         // `Player` to update.
-        self.world.player.update(FIXED_DT.as_secs_f32());
-        self.world.wall_collision();
-        self.world.object_to_player_collision();
+        self.world.update(FIXED_DT.as_secs_f32());
 
     }
 

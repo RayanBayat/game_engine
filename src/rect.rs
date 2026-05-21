@@ -46,6 +46,14 @@ impl Rect {
     pub fn move_to(&mut self, new_position: [f32; 2]) {
         self.rect_object.position = new_position;
     }
+
+    pub fn intersects(&self, other: &Rect) -> bool {
+        return other.position()[0] < self.position()[0] + self.size()[0] &&
+            other.position()[0] + other.size()[0] > self.position()[0] &&
+            other.position()[1] < self.position()[1] + self.size()[1] &&
+            other.position()[1] + other.size()[1] > self.position()[1];
+    }
+
 }
 
 #[repr(C)]

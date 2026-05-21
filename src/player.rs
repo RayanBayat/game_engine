@@ -92,6 +92,7 @@ impl Player {
         if self.state.up && self.grounded {
             self.velocity[1] = -self.jump_strength;
             self.grounded = false;
+            println!("jumping");
         }
         
         self.velocity[1] += self.gravity * dt;

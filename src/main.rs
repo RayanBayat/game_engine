@@ -479,7 +479,6 @@ impl State {
                 camera_position: self.world.camera.position(),
                 _padding: [0.0; 4],
             };
-            println!("camera_position: {:?}", self.world.camera.position(),);
             self.queue.write_buffer(
                 &self.world.player.rect.render_rect.uniform_buffer,
                 0,
@@ -488,7 +487,6 @@ impl State {
 
             _pass.set_bind_group(0, &self.world.player.rect.render_rect.bind_group, &[]);
             _pass.draw_indexed(0..self.num_indices, 0, 0..1);
-
         }
         self.queue.submit(std::iter::once(encoder.finish()));
         frame.present();

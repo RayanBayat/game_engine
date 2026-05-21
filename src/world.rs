@@ -69,15 +69,24 @@ impl World {
                wall.position()[0] + wall.size()[0] > self.player.rect.position()[0] &&
                wall.position()[1] < self.player.rect.position()[1] + self.player.rect.size()[1] &&
                wall.position()[1] + wall.size()[1] > self.player.rect.position()[1] {
-
+                let mut grounded = 0;
+                
                 let overlap_left = (self.player.rect.position()[0] + self.player.rect.size()[0]) - wall.position()[0];
                 let overlap_right = (wall.position()[0] + wall.size()[0]) - self.player.rect.position()[0];
                 let overlap_bottom = (wall.position()[1] + wall.size()[1]) - self.player.rect.position()[1];
                 let overlap_top = (self.player.rect.position()[1] + self.player.rect.size()[1]) - wall.position()[1];
 
                 let overlap_x = if overlap_left < overlap_right { -overlap_left } else { overlap_right };
-                let overlap_y = if overlap_top < overlap_bottom { self.player.grounded = true; -overlap_top } else { overlap_bottom };
-                let overlap = if overlap_x.abs() < overlap_y.abs() { self.player.velocity[0] = 0.0; [overlap_x, 0.0] } else { self.player.velocity[1] = 0.0; [0.0, overlap_y] };
+                let overlap_y = if overlap_top < overlap_bottom { grounded += 1; -overlap_top } else { overlap_bottom };
+                let overlap = if overlap_x.abs() < overlap_y.abs() { 
+                    self.player.velocity[0] = 0.0; [overlap_x, 0.0] 
+                } else { 
+                    self.player.velocity[1] = 0.0; grounded += 1; [0.0, overlap_y] 
+                };
+                
+                if grounded == 2 {
+                    self.player.grounded = true;
+                }
                 
                 self.player.rect.move_by(overlap);
             }
@@ -86,10 +95,10 @@ impl World {
 
     pub fn update(&mut self, dt: f32) {
         self.player.update(dt);
-
+        
         self.player.grounded = false;
         
-        self.wall_collision();
+        // self.wall_collision();
         self.object_to_player_collision();
         self.camera.update(self.player.rect.position(), self.screen_size);
     }
@@ -122,7 +131,7 @@ impl World {
                     'P' => {
                         self.player = Player::new(
                             [x as f32 * x_step, y as f32 * y_step],
-                            [70.0, 100.0],
+                            [50.0, 50.0],
                             [1.0, 0.0, 0.0, 1.0], // Red color
                             self.camera.position(),
                             device,

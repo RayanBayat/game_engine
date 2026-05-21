@@ -73,6 +73,7 @@ impl World {
                 let overlap_x = if overlap_left < overlap_right { -overlap_left } else { overlap_right };
                 let overlap_y = if overlap_top < overlap_bottom { self.player.grounded = true; -overlap_top } else { overlap_bottom };
                 let overlap = if overlap_x.abs() < overlap_y.abs() { self.player.velocity[0] = 0.0; [overlap_x, 0.0] } else { self.player.velocity[1] = 0.0; [0.0, overlap_y] };
+                
                 self.player.rect.move_by(overlap);
             }
         }

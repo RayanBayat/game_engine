@@ -2,7 +2,7 @@ use winit::keyboard::KeyCode;
 use winit::event::KeyEvent;
 
 use crate::rect;
-use crate::util::{normalize, clamp};
+use crate::util::{clamp};
 
 #[derive(Default)]
 pub struct InputState {
@@ -17,7 +17,10 @@ pub struct Player {
     state: InputState,
     top_speed: f32,
     speed: f32,
+    acceleration: f32,
+    jump_strength: f32,
     friction: f32,
+    gravity: f32,
     pub velocity: [f32; 2],
     pub grounded: bool,
 }
@@ -38,7 +41,10 @@ impl Player {
             },
             top_speed: 150.0, // todo remove magic numbers and put them in a config file or something 
             speed: 100.0,
+            acceleration: 1.0,
+            jump_strength: 150.0,
             friction: 0.8,
+            gravity: 100.0,
             state: InputState::default(),
             velocity: [0.0; 2],
             grounded: true,
@@ -69,11 +75,11 @@ impl Player {
         let mut direction_x = 0.0;
 
         if self.state.left {
-            direction_x -= 1.0;
+            direction_x -= self.acceleration;
         }
 
         if self.state.right {
-            direction_x += 1.0;
+            direction_x += self.acceleration;
         }
 
         self.velocity[0] += direction_x * self.speed * dt;
@@ -83,20 +89,18 @@ impl Player {
         }
         
         if self.state.up && self.grounded {
-            self.velocity[1] = -150.0;
+            self.velocity[1] = -self.jump_strength;
             self.grounded = false;
         }
-
         
-        self.velocity[1] += 100.0 * dt;
+        self.velocity[1] += self.gravity * dt;
 
         self.velocity[0] = clamp(self.velocity[0], -self.top_speed, self.top_speed);
-        self.velocity[1] = clamp(self.velocity[1], -self.top_speed, self.top_speed);
+        self.velocity[1] = clamp(self.velocity[1], -self.jump_strength, self.top_speed );
 
         self.rect.move_by([
             self.velocity[0] * dt,
             self.velocity[1] * dt,
         ]);
-        println!("velocity: {:?}", self.velocity);
     }
 }

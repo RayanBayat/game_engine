@@ -1,5 +1,6 @@
 use crate::player::Player;
 use crate::rect::Rect;
+use crate::camera::{self, Camera};
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -9,6 +10,7 @@ pub struct World {
     pub items: Vec<Rect>,
     pub screen_size: [f32; 2],
     pub dimensions: [i32; 2],
+    pub camera: Camera,
 }
 
 
@@ -18,11 +20,12 @@ impl World {
         rect_bind_group_layout: &wgpu::BindGroupLayout,
         screen_size: [f32; 2],
     ) -> Self {
-        
+        let camera = Camera::new([0.0, 0.0]);
         let player = Player::new(
             [5.0, 5.0],
             [70.0, 100.0],
             [1.0, 0.0, 0.0, 1.0], // Red color
+            camera.position(),
             device,
             rect_bind_group_layout,
             screen_size,
@@ -34,7 +37,9 @@ impl World {
             // Rect::new([550.0, 150.0], [100.0, 150.0], [1.0, 1.0, 1.0, 1.0], device, rect_bind_group_layout, screen_size),
         ];
 
-        Self { player, items, screen_size, dimensions: [10, 10] }
+        let camera = Camera::new(player.rect.position());
+
+        Self { player, items, screen_size, dimensions: [10, 10], camera }
     }
 
     pub fn wall_collision(&mut self) {
@@ -86,7 +91,7 @@ impl World {
         
         self.wall_collision();
         self.object_to_player_collision();
-        
+        self.camera.update(self.player.rect.position(), self.screen_size);
     }
 
     pub fn read_world(&mut self, device: &wgpu::Device, rect_bind_group_layout: &wgpu::BindGroupLayout) {
@@ -109,6 +114,7 @@ impl World {
                             [x_step, y_step],
                             [0.0, 1.0, 0.0, 1.0], // Green color
                             device,
+                            self.camera.position(),
                             rect_bind_group_layout,
                             self.screen_size,
                         ));
@@ -118,6 +124,7 @@ impl World {
                             [x as f32 * x_step, y as f32 * y_step],
                             [70.0, 100.0],
                             [1.0, 0.0, 0.0, 1.0], // Red color
+                            self.camera.position(),
                             device,
                             rect_bind_group_layout,
                             self.screen_size,

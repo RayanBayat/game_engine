@@ -19,10 +19,10 @@ pub struct RenderRect {
 }
 
 impl Rect {
-    pub fn new(position: [f32; 2], size: [f32; 2], color: [f32; 4], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2]) -> Self {
+    pub fn new(position: [f32; 2], size: [f32; 2], color: [f32; 4], device: &wgpu::Device, camera_position: [f32; 2], bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2]) -> Self {
         Rect {
             rect_object: RectObject { position, size, color },
-            render_rect: create_render_rect(device, bind_group_layout, position, size, screen_size, color),
+            render_rect: create_render_rect(device, bind_group_layout, position, size, screen_size, color, camera_position),
         }
     }
 
@@ -62,9 +62,9 @@ pub struct RectUniform {
     pub position: [f32; 2],
     pub screen_size: [f32; 2],
     pub size: [f32; 2],
-    pub _padding: [f32; 2],
-
+    pub camera_position: [f32; 2],
     pub color: [f32; 4],
+    pub _padding: [f32; 4], // change as needed to ensure 16-byte alignment
 }
 
 pub fn create_render_rect(
@@ -74,15 +74,16 @@ pub fn create_render_rect(
     size: [f32; 2],
     screen_size: [f32; 2],
     color: [f32; 4],
+    camera_position: [f32; 2],
 ) -> RenderRect {
     let uniform = RectUniform {
         position,
         size,
         screen_size,
         color,
+        camera_position,
 
-
-        _padding: [0.0; 2], // change as needed to ensure 16-byte alignment
+        _padding: [0.0; 4], // change as needed to ensure 16-byte alignment
     };
 
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

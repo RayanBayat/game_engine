@@ -19,6 +19,7 @@ pub mod rect;
 pub mod vertex;
 pub mod util;
 pub mod world;
+pub mod camera;
 
 use crate::rect::{RectUniform, VERTICES, INDICES};
 use crate::vertex::Vertex;
@@ -455,8 +456,9 @@ impl State {
                     position: item.position(),
                     size: item.size(),
                     color: item.color(),
+                    camera_position: self.world.camera.position(),
                     screen_size: [self.config.width as f32, self.config.height as f32],
-                    _padding: [0.0; 2],
+                    _padding: [0.0; 4],
                 };
 
                 self.queue.write_buffer(
@@ -474,9 +476,10 @@ impl State {
                 screen_size: [self.config.width as f32, self.config.height as f32],
                 size: self.world.player.rect.size(),
                 color: self.world.player.rect.color(),
-                _padding: [0.0; 2],
+                camera_position: self.world.camera.position(),
+                _padding: [0.0; 4],
             };
-            
+            println!("camera_position: {:?}", self.world.camera.position(),);
             self.queue.write_buffer(
                 &self.world.player.rect.render_rect.uniform_buffer,
                 0,

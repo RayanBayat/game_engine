@@ -26,7 +26,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new( position: [f32; 2], size: [f32; 2], color: [f32; 4], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2],) -> Self {
+    pub fn new( position: [f32; 2], size: [f32; 2], color: [f32; 4], camera_position: [f32; 2], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2],) -> Self {
         Player {
             rect: rect::Rect {
                 rect_object: rect::RectObject { position, size, color },
@@ -37,6 +37,7 @@ impl Player {
                     size,
                     screen_size,
                     color,
+                    camera_position,
                 ),
             },
             top_speed: 150.0, // todo remove magic numbers and put them in a config file or something 

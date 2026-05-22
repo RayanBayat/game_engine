@@ -43,7 +43,7 @@ impl Player {
             top_speed: 150.0, // todo remove magic numbers and put them in a config file or something 
             speed: 100.0,
             acceleration: 1.0,
-            jump_strength: 150.0,
+            jump_strength: 200.0,
             friction: 0.8,
             gravity: 100.0,
             state: InputState::default(),
@@ -92,7 +92,6 @@ impl Player {
         if self.state.up && self.grounded {
             self.velocity[1] = -self.jump_strength;
             self.grounded = false;
-            println!("jumping");
         }
         
         self.velocity[1] += self.gravity * dt;

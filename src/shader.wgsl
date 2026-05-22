@@ -30,7 +30,7 @@ fn vs_main(model: VertexInput) -> VertexOutput {
 
     let local_pos = model.position.xy * rect.size;
     let world_pos = local_pos + rect.position;
-    let screen_pos = world_pos - rect.camera_position;
+    let screen_pos = vec2<f32>(world_pos.x - rect.camera_position.x, world_pos.y);
 
     let clip_x = (screen_pos.x / rect.screen_size.x) * 2.0 - 1.0;
     let clip_y = 1.0 - (screen_pos.y / rect.screen_size.y) * 2.0;

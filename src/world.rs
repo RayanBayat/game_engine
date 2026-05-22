@@ -1,6 +1,6 @@
 use crate::player::Player;
 use crate::rect::Rect;
-use crate::camera::{self, Camera};
+use crate::camera::{Camera};
 
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -54,7 +54,7 @@ impl World {
         }
         if self.player.rect.position()[1] < 0.0 {
             self.player.rect.move_to([self.player.rect.position()[0], 0.0]);
-            self.player.velocity[1] = 0.0;
+            self.player.velocity[1] = 0.0; 
         }
         if self.player.rect.position()[1] + self.player.rect.size()[1] > self.screen_size[1] {
             self.player.rect.move_to([self.player.rect.position()[0], self.screen_size[1] - self.player.rect.size()[1]]);
@@ -69,7 +69,6 @@ impl World {
                wall.position()[0] + wall.size()[0] > self.player.rect.position()[0] &&
                wall.position()[1] < self.player.rect.position()[1] + self.player.rect.size()[1] &&
                wall.position()[1] + wall.size()[1] > self.player.rect.position()[1] {
-                let mut grounded = 0;
                 
                 let overlap_left = (self.player.rect.position()[0] + self.player.rect.size()[0]) - wall.position()[0];
                 let overlap_right = (wall.position()[0] + wall.size()[0]) - self.player.rect.position()[0];
@@ -77,18 +76,26 @@ impl World {
                 let overlap_top = (self.player.rect.position()[1] + self.player.rect.size()[1]) - wall.position()[1];
 
                 let overlap_x = if overlap_left < overlap_right { -overlap_left } else { overlap_right };
-                let overlap_y = if overlap_top < overlap_bottom { grounded += 1; -overlap_top } else { overlap_bottom };
-                let overlap = if overlap_x.abs() < overlap_y.abs() { 
-                    self.player.velocity[0] = 0.0; [overlap_x, 0.0] 
-                } else { 
-                    self.player.velocity[1] = 0.0; grounded += 1; [0.0, overlap_y] 
-                };
-                
-                if grounded == 2 {
-                    self.player.grounded = true;
+                let overlap_y = if overlap_top < overlap_bottom { -overlap_top } else { overlap_bottom };
+                if overlap_x.abs() < overlap_y.abs() {
+                    if overlap_x < 0.0 && self.player.velocity[0] > 0.0 {
+                        self.player.velocity[0] = 0.0;
+                    }
+                    if overlap_x > 0.0 && self.player.velocity[0] < 0.0 {
+                        self.player.velocity[0] = 0.0;
+                    }
+                    self.player.rect.move_by([overlap_x, 0.0]);
+
+                } else {
+                    if overlap_y < 0.0 && self.player.velocity[1] > 0.0 {
+                        self.player.velocity[1] = 0.0;
+                        self.player.grounded = true;
+                    }
+                    if overlap_y > 0.0 && self.player.velocity[1] < 0.0 {
+                        self.player.velocity[1] = 0.0;
+                    }
+                    self.player.rect.move_by([0.0, overlap_y]);
                 }
-                
-                self.player.rect.move_by(overlap);
             }
         }
     }
@@ -102,7 +109,8 @@ impl World {
         self.object_to_player_collision();
         self.camera.update(self.player.rect.position(), self.screen_size);
     }
-
+    
+    
     pub fn read_world(&mut self, device: &wgpu::Device, rect_bind_group_layout: &wgpu::BindGroupLayout) {
         let file = File::open("map.txt").expect("Unable to open world state file");
         let reader = BufReader::new(file);

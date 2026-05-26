@@ -1,0 +1,12 @@
+pub const PLAYER_TOP_SPEED: f32 = 150.0;
+pub const PLAYER_SPEED: f32 = 100.0;
+pub const PLAYER_ACCELERATION: f32 = 1.0;
+pub const PLAYER_JUMP_STRENGTH: f32 = 200.0;
+pub const PLAYER_FRICTION: f32 = 0.8;
+pub const GRAVITY: f32 = 100.0;
+pub const PLAYER_STARTING_POSITION: [f32; 2] = [5.0, 5.0];
+pub const CAMERA_STARTING_POSITION: [f32; 2] = [0.0, 0.0];
+pub const PLAYER_SIZE: [f32; 2] = [50.0, 50.0];
+pub const PLAYER_COLOR: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+pub const WORLD_DIMENSIONS: [i32; 2] = [10, 10];
+pub const WALL_COLOR: [f32; 4] = [0.0, 1.0, 0.0, 1.0];

@@ -3,6 +3,7 @@ use winit::event::KeyEvent;
 
 use crate::rect;
 use crate::util::{clamp};
+use crate::config::*;
 
 #[derive(Default)]
 pub struct InputState {
@@ -26,7 +27,7 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new( position: [f32; 2], size: [f32; 2], color: [f32; 4], camera_position: [f32; 2], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2],) -> Self {
+    pub fn new( position: [f32; 2], size: [f32; 2], color: [f32; 4], camera_position: [f32; 2], screen_size: [f32; 2], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout) -> Self {
         Player {
             rect: rect::Rect {
                 rect_object: rect::RectObject { position, size, color },
@@ -40,12 +41,12 @@ impl Player {
                     camera_position,
                 ),
             },
-            top_speed: 150.0, // todo remove magic numbers and put them in a config file or something 
-            speed: 100.0,
-            acceleration: 1.0,
-            jump_strength: 200.0,
-            friction: 0.8,
-            gravity: 100.0,
+            top_speed: PLAYER_TOP_SPEED,
+            speed: PLAYER_SPEED,
+            acceleration: PLAYER_ACCELERATION,
+            jump_strength: PLAYER_JUMP_STRENGTH,
+            friction: PLAYER_FRICTION,
+            gravity: GRAVITY,
             state: InputState::default(),
             velocity: [0.0; 2],
             grounded: true,
@@ -103,5 +104,20 @@ impl Player {
             self.velocity[0] * dt,
             self.velocity[1] * dt,
         ]);
+    }
+
+    pub fn get_velocity(&self) -> [f32; 2]{
+        return self.velocity;
+    }
+    pub fn set_velocity(&mut self, v: [f32; 2]) {
+        self.velocity = v;
+    }
+
+    pub fn stop_horizontal_velocity(&mut self) {
+        self.velocity[0] = 0.0;
+    }
+
+    pub fn stop_vertical_velocity(&mut self) {
+        self.velocity[1] = 0.0;
     }
 }

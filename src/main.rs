@@ -20,6 +20,7 @@ pub mod vertex;
 pub mod util;
 pub mod world;
 pub mod camera;
+pub mod config;
 
 use crate::rect::{RectUniform, VERTICES, INDICES};
 use crate::vertex::Vertex;

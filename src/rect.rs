@@ -24,7 +24,7 @@ pub struct RenderRect {
 /// 
 /// 
 impl Rect {
-    pub fn new(position: [f32; 2], size: [f32; 2], color: [f32; 4], device: &wgpu::Device, camera_position: [f32; 2], bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2]) -> Self {
+    pub fn new(position: [f32; 2], size: [f32; 2], color: [f32; 4], camera_position: [f32; 2], screen_size: [f32; 2], device: &wgpu::Device,  bind_group_layout: &wgpu::BindGroupLayout) -> Self {
         Rect {
             rect_object: RectObject { position, size, color },
             render_rect: create_render_rect(device, bind_group_layout, position, size, screen_size, color, camera_position),
@@ -58,14 +58,13 @@ impl Rect {
             other.position()[1] < self.position()[1] + self.size()[1] &&
             other.position()[1] + other.size()[1] > self.position()[1];
     }
-
 }
 
 /// Uniform data sent from the CPU to the GPU for rectangle rendering.
 ///
 /// This uniform contains all object state required by the shader
 ///
-/// Memory/Layout notes:
+/// Memory notes:
 /// - _padding exists to maintain proper GPU alignment such as 4, 8, 16, 32, 64... each flaot f32 = 4 bytes 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]

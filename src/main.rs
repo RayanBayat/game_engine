@@ -352,7 +352,6 @@ impl State {
         // Simulation update would go here once we have a `World` and
         // `Player` to update.
         self.world.update(FIXED_DT.as_secs_f32());
-
     }
 
     /// Draw a single frame. For now: clear the swapchain image to a dark

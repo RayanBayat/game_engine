@@ -18,6 +18,11 @@ pub struct RenderRect {
     pub bind_group: wgpu::BindGroup,
 }
 
+/// A Rect holds 2 values 
+/// - Rect_object holds position, size, and color things that is part of the actaul game loop
+/// - Render_rect holds things needed to be able to render the object 
+/// 
+/// 
 impl Rect {
     pub fn new(position: [f32; 2], size: [f32; 2], color: [f32; 4], device: &wgpu::Device, camera_position: [f32; 2], bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2]) -> Self {
         Rect {
@@ -56,6 +61,12 @@ impl Rect {
 
 }
 
+/// Uniform data sent from the CPU to the GPU for rectangle rendering.
+///
+/// This uniform contains all object state required by the shader
+///
+/// Memory/Layout notes:
+/// - _padding exists to maintain proper GPU alignment such as 4, 8, 16, 32, 64... each flaot f32 = 4 bytes 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct RectUniform {
@@ -107,6 +118,17 @@ pub fn create_render_rect(
     }
 }
 
+/// Vertex data describing a rectangle made from two triangles.
+///
+/// Coordinate system:
+/// - X increases to the right
+/// - Y increases upward
+/// 
+/// vertex is based on clockwise can be change to counter clockwise in render pipeline front_face
+///
+/// Each vertex also stores an RGB color value
+/// which is interpolated across the surface by the GPU.
+///
 pub const VERTICES: &[Vertex] = &[
     Vertex { position: [1.0, 0.0, 0.0], color: [1.0, 0.0, 0.0] },
     Vertex { position: [0.0, 0.0, 0.0], color: [0.0, 1.0, 0.0] },
@@ -114,6 +136,9 @@ pub const VERTICES: &[Vertex] = &[
     Vertex { position: [1.0, 1.0, 0.0], color: [1.0, 1.0, 1.0] },
 ];
 
+/// Triangle construction:
+/// - Triangle 1 -> (0, 1, 3)
+/// - Triangle 2 -> (1, 2, 3)
 pub const INDICES: &[u16] = &[
     0, 1, 3, // triangle 1
     1, 2, 3, // triangle 2

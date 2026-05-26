@@ -44,6 +44,7 @@ fn vs_main(model: VertexInput) -> VertexOutput {
 
     return out;
 }
+
 // Fragment shader
 
 @fragment

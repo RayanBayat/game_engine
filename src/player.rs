@@ -1,49 +1,123 @@
 use winit::keyboard::KeyCode;
+use winit::event::KeyEvent;
 
 use crate::rect;
+use crate::util::{clamp};
+use crate::config::*;
 
+#[derive(Default)]
+pub struct InputState {
+    pub up: bool,
+    pub down: bool,
+    pub left: bool,
+    pub right: bool,
+}
 
 pub struct Player {
     pub rect: rect::Rect,
+    state: InputState,
+    top_speed: f32,
     speed: f32,
+    acceleration: f32,
+    jump_strength: f32,
+    friction: f32,
+    gravity: f32,
+    pub velocity: [f32; 2],
+    pub grounded: bool,
 }
 
 impl Player {
-    pub fn new( position: [f32; 2], size: [f32; 2], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout, screen_size: [f32; 2],) -> Self {
+    pub fn new( position: [f32; 2], size: [f32; 2], color: [f32; 4], camera_position: [f32; 2], screen_size: [f32; 2], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout) -> Self {
         Player {
             rect: rect::Rect {
-                rect_object: rect::RectObject { position, size },
+                rect_object: rect::RectObject { position, size, color },
                 render_rect: rect::create_render_rect(
                     device,
                     bind_group_layout,
                     position,
                     size,
                     screen_size,
+                    color,
+                    camera_position,
                 ),
             },
-            speed: 5.0,
+            top_speed: PLAYER_TOP_SPEED,
+            speed: PLAYER_SPEED,
+            acceleration: PLAYER_ACCELERATION,
+            jump_strength: PLAYER_JUMP_STRENGTH,
+            friction: PLAYER_FRICTION,
+            gravity: GRAVITY,
+            state: InputState::default(),
+            velocity: [0.0; 2],
+            grounded: true,
         }
     }
 
-    pub fn handle_key(&mut self, code: KeyCode) -> bool {
+    pub fn handle_key(&mut self, code: KeyCode, event: KeyEvent) {
+        let pressed = event.state == winit::event::ElementState::Pressed;
+
         match code {
             KeyCode::KeyW | KeyCode::ArrowUp => {
-                self.rect.move_by([0.0, -self.speed]); // Move up by the player's speed
-                true
+                self.state.up = pressed;
             }
             KeyCode::KeyA | KeyCode::ArrowLeft => {
-                self.rect.move_by([-self.speed, 0.0]); // Move left by the player's speed
-                true
+                self.state.left = pressed;
             }
             KeyCode::KeyS | KeyCode::ArrowDown => {
-                self.rect.move_by([0.0, self.speed]); // Move down by the player's speed
-                true
+                self.state.down = pressed;
             }
             KeyCode::KeyD | KeyCode::ArrowRight => {
-                self.rect.move_by([self.speed, 0.0]); // Move right by the player's speed
-                true
+                self.state.right = pressed;
             }
-            _ => false,
+            _ => (),
         }
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        let mut direction_x = 0.0;
+
+        if self.state.left {
+            direction_x -= self.acceleration;
+        }
+
+        if self.state.right {
+            direction_x += self.acceleration;
+        }
+
+        self.velocity[0] += direction_x * self.speed * dt;
+
+        if direction_x == 0.0 {
+            self.velocity[0] *= self.friction;
+        }
+        
+        if self.state.up && self.grounded {
+            self.velocity[1] = -self.jump_strength;
+            self.grounded = false;
+        }
+        
+        self.velocity[1] += self.gravity * dt;
+
+        self.velocity[0] = clamp(self.velocity[0], -self.top_speed, self.top_speed);
+        self.velocity[1] = clamp(self.velocity[1], -self.jump_strength, self.top_speed );
+
+        self.rect.move_by([
+            self.velocity[0] * dt,
+            self.velocity[1] * dt,
+        ]);
+    }
+
+    pub fn get_velocity(&self) -> [f32; 2]{
+        return self.velocity;
+    }
+    pub fn set_velocity(&mut self, v: [f32; 2]) {
+        self.velocity = v;
+    }
+
+    pub fn stop_horizontal_velocity(&mut self) {
+        self.velocity[0] = 0.0;
+    }
+
+    pub fn stop_vertical_velocity(&mut self) {
+        self.velocity[1] = 0.0;
     }
 }

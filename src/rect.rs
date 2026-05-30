@@ -11,6 +11,7 @@ pub struct RectObject {
     pub position: [f32; 2],
     pub size: [f32; 2],
     pub color: [f32; 4],
+    pub previous_position: [f32; 2],
 }
 
 pub struct RenderRect {
@@ -18,16 +19,38 @@ pub struct RenderRect {
     pub bind_group: wgpu::BindGroup,
 }
 
-/// A Rect holds 2 values 
+/// A Rect holds 2 values
 /// - Rect_object holds position, size, and color things that is part of the actaul game loop
-/// - Render_rect holds things needed to be able to render the object 
-/// 
-/// 
+/// - Render_rect holds things needed to be able to render the object
+///
+///
 impl Rect {
-    pub fn new(position: [f32; 2], size: [f32; 2], color: [f32; 4], camera_position: [f32; 2], screen_size: [f32; 2], device: &wgpu::Device,  bind_group_layout: &wgpu::BindGroupLayout) -> Self {
+    pub fn new(
+        position: [f32; 2],
+        size: [f32; 2],
+        color: [f32; 4],
+        camera_position: [f32; 2],
+        screen_size: [f32; 2],
+        device: &wgpu::Device,
+        bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
+        let previous_position = position;
         Rect {
-            rect_object: RectObject { position, size, color },
-            render_rect: create_render_rect(device, bind_group_layout, position, size, screen_size, color, camera_position),
+            rect_object: RectObject {
+                position,
+                size,
+                color,
+                previous_position,
+            },
+            render_rect: create_render_rect(
+                device,
+                bind_group_layout,
+                position,
+                size,
+                screen_size,
+                color,
+                camera_position,
+            ),
         }
     }
 
@@ -53,10 +76,10 @@ impl Rect {
     }
 
     pub fn intersects(&self, other: &Rect) -> bool {
-        return other.position()[0] < self.position()[0] + self.size()[0] &&
-            other.position()[0] + other.size()[0] > self.position()[0] &&
-            other.position()[1] < self.position()[1] + self.size()[1] &&
-            other.position()[1] + other.size()[1] > self.position()[1];
+        return other.position()[0] < self.position()[0] + self.size()[0]
+            && other.position()[0] + other.size()[0] > self.position()[0]
+            && other.position()[1] < self.position()[1] + self.size()[1]
+            && other.position()[1] + other.size()[1] > self.position()[1];
     }
 }
 
@@ -65,7 +88,7 @@ impl Rect {
 /// This uniform contains all object state required by the shader
 ///
 /// Memory notes:
-/// - _padding exists to maintain proper GPU alignment such as 4, 8, 16, 32, 64... each flaot f32 = 4 bytes 
+/// - _padding exists to maintain proper GPU alignment such as 4, 8, 16, 32, 64... each flaot f32 = 4 bytes
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct RectUniform {
@@ -122,17 +145,29 @@ pub fn create_render_rect(
 /// Coordinate system:
 /// - X increases to the right
 /// - Y increases upward
-/// 
+///
 /// vertex is based on clockwise can be change to counter clockwise in render pipeline front_face
 ///
 /// Each vertex also stores an RGB color value
 /// which is interpolated across the surface by the GPU.
 ///
 pub const VERTICES: &[Vertex] = &[
-    Vertex { position: [1.0, 0.0, 0.0], color: [1.0, 0.0, 0.0] },
-    Vertex { position: [0.0, 0.0, 0.0], color: [0.0, 1.0, 0.0] },
-    Vertex { position: [0.0, 1.0, 0.0], color: [0.0, 0.0, 1.0] },
-    Vertex { position: [1.0, 1.0, 0.0], color: [1.0, 1.0, 1.0] },
+    Vertex {
+        position: [1.0, 0.0, 0.0],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [0.0, 0.0, 0.0],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [0.0, 1.0, 0.0],
+        color: [0.0, 0.0, 1.0],
+    },
+    Vertex {
+        position: [1.0, 1.0, 0.0],
+        color: [1.0, 1.0, 1.0],
+    },
 ];
 
 /// Triangle construction:
@@ -142,4 +177,3 @@ pub const INDICES: &[u16] = &[
     0, 1, 3, // triangle 1
     1, 2, 3, // triangle 2
 ];
-

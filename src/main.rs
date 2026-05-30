@@ -14,17 +14,17 @@
 //!   - winit `ApplicationHandler` trait — modern entry-point shape
 //!     https://docs.rs/winit/0.30.13/winit/application/trait.ApplicationHandler.html
 
-pub mod player;
-pub mod rect;
-pub mod vertex;
-pub mod util;
-pub mod world;
 pub mod camera;
 pub mod config;
+pub mod player;
+pub mod rect;
+pub mod util;
+pub mod vertex;
+pub mod world;
 
-use crate::rect::{RectUniform, VERTICES, INDICES};
+use crate::rect::{INDICES, RectUniform, VERTICES};
 use crate::vertex::Vertex;
-use crate::world::{World};
+use crate::world::World;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -34,8 +34,8 @@ use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::PhysicalKey;
 use winit::window::{Window, WindowId};
-use winit::keyboard::{PhysicalKey};
 
 // ---------------------------------------------------------------------------
 // Fixed-timestep simulation clock — Glenn Fiedler, "Fix Your Timestep!".
@@ -60,7 +60,9 @@ use winit::keyboard::{PhysicalKey};
 
 /// Simulation tick rate: 60 Hz (≈ 16.667 ms per step). Conventional and
 /// matches typical monitor refresh, so the accumulator stays small.
+// const FIXED_DT: Duration = Duration::from_nanos(16_666_667);
 const FIXED_DT: Duration = Duration::from_nanos(16_666_667);
+const TARGET_FPS: f32 = 60.0;
 
 /// Maximum wall-clock time the loop will absorb in one frame. Without
 /// this clamp, a debugger pause or OS sleep can push the elapsed time
@@ -68,7 +70,6 @@ const FIXED_DT: Duration = Duration::from_nanos(16_666_667);
 /// trying to "catch up", freezing the app — Fiedler calls this the
 /// "spiral of death". 250 ms is the canonical value from the article.
 const MAX_FRAME_TIME: Duration = Duration::from_millis(250);
-
 
 /// Fixed-timestep clock state.
 ///
@@ -106,9 +107,15 @@ impl Clock {
         self.accumulator += frame_time;
 
         let mut steps = 0u32;
-        while self.accumulator >= FIXED_DT { 
+        while self.accumulator >= FIXED_DT {
             steps += 1;
             self.accumulator -= FIXED_DT;
+        }
+        let dt_seconds = frame_time.as_secs_f32();
+        if dt_seconds > 0.0 {
+            // Prevent dividing by zero on the very first frame!
+            let fps = 1.0 / dt_seconds;
+            println!("FPS: {:.0}", fps); // {:.0} rounds it to a whole number
         }
 
         Tick {
@@ -141,7 +148,7 @@ struct State {
 
     // Vertex and index buffers for our rectangle geometry
     vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer, 
+    index_buffer: wgpu::Buffer,
 
     // Once we have a `World` and `Player`, they'll go here so `State` owns
     world: World,
@@ -156,7 +163,7 @@ impl State {
     /// `pollster::block_on`.
     async fn new(window: Arc<Window>) -> Self {
         let num_indices = INDICES.len() as u32;
-        let size = window.inner_size(); 
+        let size = window.inner_size();
 
         // The Instance is the wgpu entry point; defaults pick the
         // platform's preferred backend (DX12 on Windows, Metal on macOS,
@@ -224,20 +231,16 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let vertex_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(VERTICES),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
-        let index_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Index Buffer"),
-                contents: bytemuck::cast_slice(INDICES),
-                usage: wgpu::BufferUsages::INDEX,
-            }
-        );
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
@@ -245,10 +248,9 @@ impl State {
         });
 
         let rect_bind_group_layout =
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Rect Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Rect Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
@@ -257,20 +259,23 @@ impl State {
                         min_binding_size: None,
                     },
                     count: None,
-                },
-            ],
-        });
+                }],
+            });
 
         // TODO: Move this out into a `World` struct once we have one.
-        let mut world = World::new(&device, &rect_bind_group_layout, [config.width as f32, config.height as f32],);
+        let mut world = World::new(
+            &device,
+            &rect_bind_group_layout,
+            [config.width as f32, config.height as f32],
+        );
         world.read_world(&device, &rect_bind_group_layout);
 
         let render_pipeline_layout =
-        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[Some(&rect_bind_group_layout)],
-            immediate_size: 0,
-        });
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Render Pipeline Layout"),
+                bind_group_layouts: &[Some(&rect_bind_group_layout)],
+                immediate_size: 0,
+            });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
@@ -278,15 +283,15 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"), // 1.
-                buffers: &[
-                    Vertex::desc(),
-                ],
+                buffers: &[Vertex::desc()],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
-            fragment: Some(wgpu::FragmentState { // 3.
+            fragment: Some(wgpu::FragmentState {
+                // 3.
                 module: &shader,
                 entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState { // 4.
+                targets: &[Some(wgpu::ColorTargetState {
+                    // 4.
                     format: config.format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
@@ -304,13 +309,13 @@ impl State {
             },
             depth_stencil: None, // 1.
             multisample: wgpu::MultisampleState {
-                count: 1, // 2.
-                mask: !0, // 3.
+                count: 1,                         // 2.
+                mask: !0,                         // 3.
                 alpha_to_coverage_enabled: false, // 4.
             },
-        multiview_mask: None, // 5.
-        cache: None, // 6.
-    });
+            multiview_mask: None, // 5.
+            cache: None,          // 6.
+        });
 
         Self {
             num_indices,
@@ -367,7 +372,7 @@ impl State {
     /// Recovery (re-configure on Outdated/Lost/Suboptimal) lives inline
     /// here so render() has a single integration point with the surface.
     ///   https://docs.rs/wgpu/29.0.3/wgpu/enum.CurrentSurfaceTexture.html
-    fn render(&mut self) {
+    fn render(&mut self, alpha: f32) {
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) => t,
             // Suboptimal: texture is usable, but the surface no longer
@@ -410,7 +415,6 @@ impl State {
                 label: Some("frame"),
             });
 
-            
         {
             // Render pass with one color attachment (the swapchain view)
             // and no draw calls — `LoadOp::Clear` writes the clear color
@@ -441,9 +445,7 @@ impl State {
                 // rendering (the only thing a 2D platformer ever needs).
                 //   https://docs.rs/wgpu/29.0.3/wgpu/struct.RenderPassDescriptor.html
                 multiview_mask: None,
-                
             });
-
 
             // _pass is dropped here, ending the render pass. wgpu records
             // an `EndRenderPass` command at this point.
@@ -452,8 +454,15 @@ impl State {
             _pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
             for item in self.world.items.iter() {
+                let prev = item.rect_object.previous_position;
+                let curr = item.rect_object.position;
+
+                let visual_x = prev[0] + (curr[0] - prev[0]) * alpha;
+                let visual_y = prev[1] + (curr[1] - prev[1]) * alpha;
+
+                let visual_pos = [visual_x, visual_y];
                 let item_uniform = RectUniform {
-                    position: item.position(),
+                    position: visual_pos,
                     size: item.size(),
                     color: item.color(),
                     camera_position: self.world.camera.position(),
@@ -470,9 +479,19 @@ impl State {
                 _pass.set_bind_group(0, &item.render_rect.bind_group, &[]);
                 _pass.draw_indexed(0..self.num_indices, 0, 0..1);
             }
+            let visual_pos = [
+                self.world.player.rect.rect_object.previous_position[0]
+                    + (self.world.player.rect.rect_object.position[0]
+                        - self.world.player.rect.rect_object.previous_position[0])
+                        * alpha,
+                self.world.player.rect.rect_object.previous_position[1]
+                    + (self.world.player.rect.rect_object.position[1]
+                        - self.world.player.rect.rect_object.previous_position[1])
+                        * alpha,
+            ];
 
             let player_uniform = RectUniform {
-                position: self.world.player.rect.position(),
+                position: visual_pos,
                 screen_size: [self.config.width as f32, self.config.height as f32],
                 size: self.world.player.rect.size(),
                 color: self.world.player.rect.color(),
@@ -483,7 +502,7 @@ impl State {
                 &self.world.player.rect.render_rect.uniform_buffer,
                 0,
                 bytemuck::bytes_of(&player_uniform),
-                );
+            );
 
             _pass.set_bind_group(0, &self.world.player.rect.render_rect.bind_group, &[]);
             _pass.draw_indexed(0..self.num_indices, 0, 0..1);
@@ -553,6 +572,7 @@ impl ApplicationHandler for App {
 
             WindowEvent::Resized(new_size) => state.resize(new_size),
             WindowEvent::RedrawRequested => {
+                let frame_start = Instant::now();
                 // Advance the fixed-timestep clock first, BEFORE render.
                 // `tick.steps` says how many simulation updates to run
                 // this frame (0..N); `tick.alpha` is the render
@@ -561,19 +581,26 @@ impl ApplicationHandler for App {
                 //   world.update(FIXED_DT)
                 // goes. See Glenn Fiedler, "Fix Your Timestep!".
                 let tick = self.clock.tick();
+
                 for _ in 0..tick.steps {
+                    state.update();
                     // Simulation step would happen here.
                 }
                 // `_alpha` will be passed to `render` once we have
                 // prev/curr simulation states to interpolate between.
-                let _alpha = tick.alpha;
-
+                let alpha = tick.alpha;
+                // println!("{:?} {}", {}, _alpha);
                 // All surface error recovery lives inside `render`
                 // (wgpu 29 collapsed the old SurfaceError into the
                 // CurrentSurfaceTexture enum).
-                state.update();
-                state.render();
 
+                state.render(alpha);
+
+                let target_duration = Duration::from_secs_f32(1.0 / TARGET_FPS);
+                let time_spent = frame_start.elapsed();
+                if time_spent < target_duration {
+                    std::thread::sleep(target_duration - time_spent);
+                }
                 // Continuous redraw — see Poll-mode rationale in `main`.
                 state.window.request_redraw();
             }
@@ -601,6 +628,4 @@ fn main() {
     event_loop
         .run_app(&mut app)
         .expect("event loop terminated with error");
-
-
 }

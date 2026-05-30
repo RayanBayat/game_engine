@@ -8,13 +8,13 @@ pub struct Vertex {
 // lib.rs
 /// Memory layout described in Rect::Vertices
 /// Each Vertex is going to contain the position and color
-/// 
+///
 /// The offsets must match the memory layout of the Vertex struct
 /// exactly, otherwise the shader will read incorrect data.
 /// Position = vec3<f32>, color = vec3<f32>
-/// 
+///
 /// Array stride tells the size of a single vertex
-/// Step mode is the step to the next attribute 
+/// Step mode is the step to the next attribute
 impl Vertex {
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -30,8 +30,8 @@ impl Vertex {
                     offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
                     format: wgpu::VertexFormat::Float32x3,
-                }
-            ]
+                },
+            ],
         }
     }
 }

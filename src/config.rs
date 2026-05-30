@@ -1,9 +1,9 @@
-pub const PLAYER_TOP_SPEED: f32 = 150.0;
-pub const PLAYER_SPEED: f32 = 100.0;
+pub const PLAYER_TOP_SPEED: f32 = 600.0;
+pub const PLAYER_SPEED: f32 = 800.0;
 pub const PLAYER_ACCELERATION: f32 = 1.0;
-pub const PLAYER_JUMP_STRENGTH: f32 = 200.0;
-pub const PLAYER_FRICTION: f32 = 0.8;
-pub const GRAVITY: f32 = 100.0;
+pub const PLAYER_JUMP_STRENGTH: f32 = 500.0;
+pub const PLAYER_FRICTION: f32 = 0.85;
+pub const GRAVITY: f32 = 1200.0;
 pub const PLAYER_STARTING_POSITION: [f32; 2] = [5.0, 5.0];
 pub const CAMERA_STARTING_POSITION: [f32; 2] = [0.0, 0.0];
 pub const PLAYER_SIZE: [f32; 2] = [50.0, 50.0];

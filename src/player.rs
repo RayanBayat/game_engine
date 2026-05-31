@@ -1,9 +1,9 @@
-use winit::keyboard::KeyCode;
 use winit::event::KeyEvent;
+use winit::keyboard::KeyCode;
 
-use crate::rect;
-use crate::util::{clamp};
 use crate::config::*;
+use crate::rect;
+use crate::util::clamp;
 
 #[derive(Default)]
 pub struct InputState {
@@ -27,10 +27,24 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn new( position: [f32; 2], size: [f32; 2], color: [f32; 4], camera_position: [f32; 2], screen_size: [f32; 2], device: &wgpu::Device, bind_group_layout: &wgpu::BindGroupLayout) -> Self {
+    pub fn new(
+        position: [f32; 2],
+        size: [f32; 2],
+        color: [f32; 4],
+        camera_position: [f32; 2],
+        screen_size: [f32; 2],
+        device: &wgpu::Device,
+        bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
+        let previous_position = position;
         Player {
             rect: rect::Rect {
-                rect_object: rect::RectObject { position, size, color },
+                rect_object: rect::RectObject {
+                    position,
+                    size,
+                    color,
+                    previous_position,
+                },
                 render_rect: rect::create_render_rect(
                     device,
                     bind_group_layout,
@@ -89,24 +103,24 @@ impl Player {
         if direction_x == 0.0 {
             self.velocity[0] *= self.friction;
         }
-        
+
         if self.state.up && self.grounded {
             self.velocity[1] = -self.jump_strength;
             self.grounded = false;
         }
-        
+
         self.velocity[1] += self.gravity * dt;
 
         self.velocity[0] = clamp(self.velocity[0], -self.top_speed, self.top_speed);
-        self.velocity[1] = clamp(self.velocity[1], -self.jump_strength, self.top_speed );
+        self.velocity[1] = clamp(self.velocity[1], -self.jump_strength, self.top_speed);
 
-        self.rect.move_by([
-            self.velocity[0] * dt,
-            self.velocity[1] * dt,
-        ]);
+        self.rect.rect_object.previous_position = self.rect.rect_object.position;
+
+        self.rect
+            .move_by([self.velocity[0] * dt, self.velocity[1] * dt]);
     }
 
-    pub fn get_velocity(&self) -> [f32; 2]{
+    pub fn get_velocity(&self) -> [f32; 2] {
         return self.velocity;
     }
     pub fn set_velocity(&mut self, v: [f32; 2]) {

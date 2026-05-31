@@ -284,7 +284,7 @@ impl State {
             &camera_bind_group_layout,
             [config.width as f32, config.height as f32],
         );
-        
+
         world.read_world(&device, &rect_bind_group_layout);
 
         let render_pipeline_layout =

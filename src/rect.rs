@@ -163,7 +163,8 @@ pub fn create_render_rect(
         }],
     });
 
-    GpuBinding { // todo:: move out of rect to its own file perhaps since its used by both player and camera
+    GpuBinding {
+        // todo:: move out of rect to its own file perhaps since its used by both player and camera
         uniform_buffer,
         bind_group,
     }

@@ -35,12 +35,8 @@ impl World {
         camera_bind_group_layout: &wgpu::BindGroupLayout,
         screen_size: [f32; 2],
     ) -> Self {
-        let camera = Camera::new(
-            CAMERA_STARTING_POSITION, 
-            device, 
-            camera_bind_group_layout
-        );
-        
+        let camera = Camera::new(CAMERA_STARTING_POSITION, device, camera_bind_group_layout);
+
         let player = Player::new(
             PLAYER_STARTING_POSITION,
             PLAYER_SIZE,

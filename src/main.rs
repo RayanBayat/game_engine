@@ -27,6 +27,7 @@ use crate::rect::{INDICES, RectUniform, VERTICES};
 use crate::vertex::Vertex;
 use crate::world::World;
 use crate::config::*;
+use crate::util::lerp;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -455,19 +456,29 @@ impl State {
             _pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             _pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
+
+            let player_visual = lerp(
+                self.world.player.rect.rect_object.previous_position,
+                self.world.player.rect.rect_object.position,
+                alpha,
+            );
+
+            let camera_pos = [
+                player_visual[0] - self.config.width as f32 / 2.0,
+                player_visual[1] - self.config.height as f32 / 2.0,
+            ];
+
             for item in self.world.items.iter() {
-                let prev = item.rect_object.previous_position;
-                let curr = item.rect_object.position;
-
-                let visual_x = prev[0] + (curr[0] - prev[0]) * alpha;
-                let visual_y = prev[1] + (curr[1] - prev[1]) * alpha;
-
-                let visual_pos = [visual_x, visual_y];
+                let visual_pos = lerp(
+                    item.rect_object.previous_position, 
+                    item.rect_object.position, 
+                    alpha);
+                    
                 let item_uniform = RectUniform {
                     position: visual_pos,
                     size: item.size(),
                     color: item.color(),
-                    camera_position: self.world.camera.position(),
+                    camera_position: camera_pos,
                     rotation: item.rotation(),
                     screen_size: [self.config.width as f32, self.config.height as f32],
                     _padding: UNIFORM_PADDING,
@@ -482,23 +493,13 @@ impl State {
                 _pass.set_bind_group(0, &item.render_rect.bind_group, &[]);
                 _pass.draw_indexed(0..self.num_indices, 0, 0..1);
             }
-            let visual_pos = [
-                self.world.player.rect.rect_object.previous_position[0]
-                    + (self.world.player.rect.rect_object.position[0]
-                        - self.world.player.rect.rect_object.previous_position[0])
-                        * alpha,
-                self.world.player.rect.rect_object.previous_position[1]
-                    + (self.world.player.rect.rect_object.position[1]
-                        - self.world.player.rect.rect_object.previous_position[1])
-                        * alpha,
-            ];
 
             let player_uniform = RectUniform {
-                position: visual_pos,
+                position: player_visual,
                 screen_size: [self.config.width as f32, self.config.height as f32],
                 size: self.world.player.rect.size(),
                 color: self.world.player.rect.color(),
-                camera_position: self.world.camera.position(),
+                camera_position: camera_pos,
                 rotation: self.world.player.rect.rotation(),
                 _padding: UNIFORM_PADDING,
             };

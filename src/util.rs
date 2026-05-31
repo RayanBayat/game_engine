@@ -16,3 +16,10 @@ pub fn clamp(value: f32, min: f32, max: f32) -> f32 {
         value
     }
 }
+
+pub fn lerp(prev: [f32; 2], curr: [f32; 2], alpha: f32) -> [f32; 2] {
+    [
+        prev[0] + (curr[0] - prev[0]) * alpha,
+        prev[1] + (curr[1] - prev[1]) * alpha,
+    ]
+}

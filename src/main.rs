@@ -14,6 +14,7 @@
 //!   - winit `ApplicationHandler` trait — modern entry-point shape
 //!     https://docs.rs/winit/0.30.13/winit/application/trait.ApplicationHandler.html
 
+pub mod animation;
 pub mod camera;
 pub mod config;
 pub mod player;
@@ -21,13 +22,12 @@ pub mod rect;
 pub mod util;
 pub mod vertex;
 pub mod world;
-pub mod animation;
 
+use crate::config::*;
 use crate::rect::{INDICES, RectUniform, VERTICES};
+use crate::util::lerp;
 use crate::vertex::Vertex;
 use crate::world::World;
-use crate::config::*;
-use crate::util::lerp;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -456,7 +456,6 @@ impl State {
             _pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             _pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-
             let player_visual = lerp(
                 self.world.player.rect.rect_object.previous_position,
                 self.world.player.rect.rect_object.position,
@@ -470,10 +469,11 @@ impl State {
 
             for item in self.world.items.iter() {
                 let visual_pos = lerp(
-                    item.rect_object.previous_position, 
-                    item.rect_object.position, 
-                    alpha);
-                    
+                    item.rect_object.previous_position,
+                    item.rect_object.position,
+                    alpha,
+                );
+
                 let item_uniform = RectUniform {
                     position: visual_pos,
                     size: item.size(),

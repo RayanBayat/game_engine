@@ -1,5 +1,5 @@
-use crate::vertex::Vertex;
 use crate::config::*;
+use crate::vertex::Vertex;
 
 use wgpu::util::DeviceExt;
 

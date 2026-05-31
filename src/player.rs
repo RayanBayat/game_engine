@@ -1,9 +1,9 @@
 use winit::event::KeyEvent;
 use winit::keyboard::KeyCode;
 
+use crate::animation::Animation;
 use crate::config::*;
 use crate::rect;
-use crate::animation::Animation;
 use crate::util::clamp;
 
 #[derive(Default)]
@@ -47,7 +47,7 @@ impl Player {
                     size,
                     color,
                     previous_position,
-                    rotation
+                    rotation,
                 },
                 render_rect: rect::create_render_rect(
                     device,
@@ -93,7 +93,8 @@ impl Player {
     }
 
     pub fn update(&mut self, dt: f32) {
-        self.animation_handler.spin(self.grounded, self.rect.mut_rotation());
+        self.animation_handler
+            .spin(self.grounded, self.rect.mut_rotation());
 
         let mut direction_x = 0.0;
 

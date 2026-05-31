@@ -6,6 +6,7 @@ struct RectUniform {
     size: vec2<f32>,
     camera_position: vec2<f32>,
     color: vec4<f32>,
+    rotation: f32,
     _padding: vec4<f32>,
 };
 
@@ -29,7 +30,21 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     out.color = rect.color;
 
     let local_pos = model.position.xy * rect.size;
-    let world_pos = local_pos + rect.position;
+
+    let center = rect.size * 0.5;
+    let centered = local_pos - center;
+
+    let c = cos(rect.rotation);
+    let s = sin(rect.rotation);
+
+    let rotated = vec2<f32>(
+        centered.x * c - centered.y * s,
+        centered.x * s + centered.y * c,
+    );
+
+    let rotated_local = rotated + center;
+
+    let world_pos = rotated_local + rect.position;
     let screen_pos = vec2<f32>(world_pos.x - rect.camera_position.x, world_pos.y);
 
     let clip_x = (screen_pos.x / rect.screen_size.x) * 2.0 - 1.0;

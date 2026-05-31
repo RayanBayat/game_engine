@@ -39,6 +39,7 @@ impl World {
             PLAYER_STARTING_POSITION,
             PLAYER_SIZE,
             PLAYER_COLOR,
+            PLAYER_ROTATION,
             camera.position(),
             screen_size,
             device,
@@ -184,6 +185,7 @@ impl World {
                             [x as f32 * x_step, y as f32 * y_step],
                             [x_step, y_step],
                             WALL_COLOR, // Green color
+                            WALL_ROTATION,
                             self.camera.position(),
                             self.screen_size,
                             device,
@@ -195,6 +197,7 @@ impl World {
                             [x as f32 * x_step, y as f32 * y_step],
                             PLAYER_SIZE,
                             PLAYER_COLOR, // Red color
+                            PLAYER_ROTATION,
                             self.camera.position(),
                             self.screen_size,
                             device,

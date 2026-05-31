@@ -1,4 +1,5 @@
 use crate::vertex::Vertex;
+use crate::config::*;
 
 use wgpu::util::DeviceExt;
 
@@ -12,6 +13,7 @@ pub struct RectObject {
     pub size: [f32; 2],
     pub color: [f32; 4],
     pub previous_position: [f32; 2],
+    pub rotation: f32,
 }
 
 pub struct RenderRect {
@@ -29,6 +31,7 @@ impl Rect {
         position: [f32; 2],
         size: [f32; 2],
         color: [f32; 4],
+        rotation: f32,
         camera_position: [f32; 2],
         screen_size: [f32; 2],
         device: &wgpu::Device,
@@ -41,6 +44,7 @@ impl Rect {
                 size,
                 color,
                 previous_position,
+                rotation,
             },
             render_rect: create_render_rect(
                 device,
@@ -75,6 +79,13 @@ impl Rect {
         self.rect_object.position = new_position;
     }
 
+    pub fn rotation(&self) -> f32 {
+        self.rect_object.rotation
+    }
+
+    pub fn mut_rotation(&mut self) -> &mut f32 {
+        &mut self.rect_object.rotation
+    }
     pub fn intersects(&self, other: &Rect) -> bool {
         return other.position()[0] < self.position()[0] + self.size()[0]
             && other.position()[0] + other.size()[0] > self.position()[0]
@@ -97,7 +108,8 @@ pub struct RectUniform {
     pub size: [f32; 2],
     pub camera_position: [f32; 2],
     pub color: [f32; 4],
-    pub _padding: [f32; 4], // change as needed to ensure 16-byte alignment
+    pub rotation: f32,
+    pub _padding: UniformPadding, // change as needed to ensure 16-byte alignment
 }
 
 pub fn create_render_rect(
@@ -116,7 +128,8 @@ pub fn create_render_rect(
         color,
         camera_position,
 
-        _padding: [0.0; 4], // change as needed to ensure 16-byte alignment
+        rotation: 0.0,
+        _padding: UNIFORM_PADDING, // change as needed to ensure 16-byte alignment
     };
 
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

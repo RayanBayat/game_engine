@@ -3,6 +3,7 @@ use winit::keyboard::KeyCode;
 
 use crate::config::*;
 use crate::rect;
+use crate::animation::Animation;
 use crate::util::clamp;
 
 #[derive(Default)]
@@ -24,6 +25,7 @@ pub struct Player {
     gravity: f32,
     pub velocity: [f32; 2],
     pub grounded: bool,
+    animation_handler: Animation,
 }
 
 impl Player {
@@ -31,6 +33,7 @@ impl Player {
         position: [f32; 2],
         size: [f32; 2],
         color: [f32; 4],
+        rotation: f32,
         camera_position: [f32; 2],
         screen_size: [f32; 2],
         device: &wgpu::Device,
@@ -44,6 +47,7 @@ impl Player {
                     size,
                     color,
                     previous_position,
+                    rotation
                 },
                 render_rect: rect::create_render_rect(
                     device,
@@ -64,6 +68,7 @@ impl Player {
             state: InputState::default(),
             velocity: [0.0; 2],
             grounded: true,
+            animation_handler: Animation::new(),
         }
     }
 
@@ -88,6 +93,8 @@ impl Player {
     }
 
     pub fn update(&mut self, dt: f32) {
+        self.animation_handler.spin(self.grounded, self.rect.mut_rotation());
+
         let mut direction_x = 0.0;
 
         if self.state.left {

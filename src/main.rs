@@ -21,10 +21,12 @@ pub mod rect;
 pub mod util;
 pub mod vertex;
 pub mod world;
+pub mod animation;
 
 use crate::rect::{INDICES, RectUniform, VERTICES};
 use crate::vertex::Vertex;
 use crate::world::World;
+use crate::config::*;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -466,8 +468,9 @@ impl State {
                     size: item.size(),
                     color: item.color(),
                     camera_position: self.world.camera.position(),
+                    rotation: item.rotation(),
                     screen_size: [self.config.width as f32, self.config.height as f32],
-                    _padding: [0.0; 4],
+                    _padding: UNIFORM_PADDING,
                 };
 
                 self.queue.write_buffer(
@@ -496,7 +499,8 @@ impl State {
                 size: self.world.player.rect.size(),
                 color: self.world.player.rect.color(),
                 camera_position: self.world.camera.position(),
-                _padding: [0.0; 4],
+                rotation: self.world.player.rect.rotation(),
+                _padding: UNIFORM_PADDING,
             };
             self.queue.write_buffer(
                 &self.world.player.rect.render_rect.uniform_buffer,

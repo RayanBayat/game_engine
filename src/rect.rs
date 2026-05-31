@@ -5,7 +5,7 @@ use wgpu::util::DeviceExt;
 
 pub struct Rect {
     pub rect_object: RectObject,
-    pub render_rect: RenderRect,
+    pub render_rect: GpuBinding,
 }
 
 pub struct RectObject {
@@ -16,7 +16,7 @@ pub struct RectObject {
     pub rotation: f32,
 }
 
-pub struct RenderRect {
+pub struct GpuBinding {
     pub uniform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
 }
@@ -32,7 +32,6 @@ impl Rect {
         size: [f32; 2],
         color: [f32; 4],
         rotation: f32,
-        camera_position: [f32; 2],
         screen_size: [f32; 2],
         device: &wgpu::Device,
         bind_group_layout: &wgpu::BindGroupLayout,
@@ -53,7 +52,6 @@ impl Rect {
                 size,
                 screen_size,
                 color,
-                camera_position,
             ),
         }
     }
@@ -106,10 +104,30 @@ pub struct RectUniform {
     pub position: [f32; 2],
     pub screen_size: [f32; 2],
     pub size: [f32; 2],
-    pub camera_position: [f32; 2],
+    pub _pad: [f32; 2],
     pub color: [f32; 4],
     pub rotation: f32,
-    pub _padding: UniformPadding, // change as needed to ensure 16-byte alignment
+    pub _padding: UniformRectPadding,
+}
+
+impl RectUniform {
+    pub fn new(
+        position: [f32; 2],
+        screen_size: [f32; 2],
+        size: [f32; 2],
+        color: [f32; 4],
+        rotation: f32,
+    ) -> Self {
+        Self {
+            position,
+            screen_size,
+            size,
+            _pad: [0.0; 2],
+            color,
+            rotation,
+            _padding: UNIFORM_RECT_PADDING,
+        }
+    }
 }
 
 pub fn create_render_rect(
@@ -119,17 +137,15 @@ pub fn create_render_rect(
     size: [f32; 2],
     screen_size: [f32; 2],
     color: [f32; 4],
-    camera_position: [f32; 2],
-) -> RenderRect {
+) -> GpuBinding {
     let uniform = RectUniform {
         position,
         size,
         screen_size,
+        _pad: [0.0; 2],
         color,
-        camera_position,
-
         rotation: 0.0,
-        _padding: UNIFORM_PADDING, // change as needed to ensure 16-byte alignment
+        _padding: UNIFORM_RECT_PADDING,
     };
 
     let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -147,7 +163,7 @@ pub fn create_render_rect(
         }],
     });
 
-    RenderRect {
+    GpuBinding { // todo:: move out of rect to its own file perhaps since its used by both player and camera
         uniform_buffer,
         bind_group,
     }

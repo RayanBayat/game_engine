@@ -12,14 +12,15 @@ pub const PLAYER_ANIMATION_SPEED: f32 = 0.2;
 
 //camera
 pub const CAMERA_STARTING_POSITION: [f32; 2] = [0.0, 0.0];
+pub type UniformCameraPadding = [f32; 2];
+pub const UNIFORM_CAMERA_PADDING: [f32; 2] = [0.0; 2];
 
 //wall
 pub const WALL_COLOR: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
 pub const WALL_ROTATION: f32 = 0.0;
+pub type UniformRectPadding = [f32; 8];
+pub const UNIFORM_RECT_PADDING: [f32; 8] = [0.0; 8];
 
 //world
 pub const WORLD_DIMENSIONS: [i32; 2] = [10, 10];
 pub const GRAVITY: f32 = 1200.0;
-
-pub type UniformPadding = [f32; 8];
-pub const UNIFORM_PADDING: [f32; 8] = [0.0; 8];

@@ -1,17 +1,25 @@
 // Vertex shader
 
+
 struct RectUniform {
     position: vec2<f32>,
     screen_size: vec2<f32>,
     size: vec2<f32>,
-    camera_position: vec2<f32>,
     color: vec4<f32>,
     rotation: f32,
-    _padding: vec4<f32>,
+    _padding: vec3<f32>,
 };
 
 @group(0) @binding(0)
 var<uniform> rect: RectUniform;
+
+struct CameraUniform {
+    position: vec2<f32>,
+    _padding: vec2<f32>,
+};
+
+@group(1) @binding(0)
+var<uniform> camera: CameraUniform;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -45,7 +53,7 @@ fn vs_main(model: VertexInput) -> VertexOutput {
     let rotated_local = rotated + center;
 
     let world_pos = rotated_local + rect.position;
-    let screen_pos = vec2<f32>(world_pos.x - rect.camera_position.x, world_pos.y);
+    let screen_pos = vec2<f32>(world_pos.x - camera.position.x, world_pos.y);
 
     let clip_x = (screen_pos.x / rect.screen_size.x) * 2.0 - 1.0;
     let clip_y = 1.0 - (screen_pos.y / rect.screen_size.y) * 2.0;

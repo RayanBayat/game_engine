@@ -32,27 +32,26 @@ impl World {
     pub fn new(
         device: &wgpu::Device,
         rect_bind_group_layout: &wgpu::BindGroupLayout,
+        camera_bind_group_layout: &wgpu::BindGroupLayout,
         screen_size: [f32; 2],
     ) -> Self {
-        let camera = Camera::new(CAMERA_STARTING_POSITION);
+        let camera = Camera::new(
+            CAMERA_STARTING_POSITION, 
+            device, 
+            camera_bind_group_layout
+        );
+        
         let player = Player::new(
             PLAYER_STARTING_POSITION,
             PLAYER_SIZE,
             PLAYER_COLOR,
             PLAYER_ROTATION,
-            camera.position(),
             screen_size,
             device,
             rect_bind_group_layout,
         );
 
-        let items = vec![
-            // Rect::new([300.0, 300.0], [100.0, 150.0], [0.0, 1.0, 0.0, 1.0], device, rect_bind_group_layout, screen_size), // Green color
-            // Rect::new([400.0, 300.0], [100.0, 150.0], [1.0, 1.0, 1.0, 1.0], device, rect_bind_group_layout, screen_size),
-            // Rect::new([550.0, 150.0], [100.0, 150.0], [1.0, 1.0, 1.0, 1.0], device, rect_bind_group_layout, screen_size),
-        ];
-
-        let camera = Camera::new(player.rect.position());
+        let items = vec![];
 
         Self {
             player,
@@ -184,9 +183,8 @@ impl World {
                         self.items.push(Rect::new(
                             [x as f32 * x_step, y as f32 * y_step],
                             [x_step, y_step],
-                            WALL_COLOR, // Green color
+                            WALL_COLOR,
                             WALL_ROTATION,
-                            self.camera.position(),
                             self.screen_size,
                             device,
                             rect_bind_group_layout,
@@ -196,9 +194,8 @@ impl World {
                         self.player = Player::new(
                             [x as f32 * x_step, y as f32 * y_step],
                             PLAYER_SIZE,
-                            PLAYER_COLOR, // Red color
+                            PLAYER_COLOR,
                             PLAYER_ROTATION,
-                            self.camera.position(),
                             self.screen_size,
                             device,
                             rect_bind_group_layout,

@@ -14,6 +14,7 @@
 //!   - winit `ApplicationHandler` trait — modern entry-point shape
 //!     https://docs.rs/winit/0.30.13/winit/application/trait.ApplicationHandler.html
 
+pub mod animation;
 pub mod camera;
 pub mod config;
 pub mod player;
@@ -23,6 +24,7 @@ pub mod vertex;
 pub mod world;
 
 use crate::rect::{INDICES, RectUniform, VERTICES};
+use crate::util::lerp;
 use crate::vertex::Vertex;
 use crate::world::World;
 
@@ -150,7 +152,6 @@ struct State {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
 
-    // Once we have a `World` and `Player`, they'll go here so `State` owns
     world: World,
 }
 
@@ -262,18 +263,37 @@ impl State {
                 }],
             });
 
-        // TODO: Move this out into a `World` struct once we have one.
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Camera Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
         let mut world = World::new(
             &device,
             &rect_bind_group_layout,
+            &camera_bind_group_layout,
             [config.width as f32, config.height as f32],
         );
+
         world.read_world(&device, &rect_bind_group_layout);
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[Some(&rect_bind_group_layout)],
+                bind_group_layouts: &[
+                    Some(&rect_bind_group_layout),
+                    Some(&camera_bind_group_layout),
+                ],
                 immediate_size: 0,
             });
 
@@ -382,6 +402,7 @@ impl State {
                 self.surface.configure(&self.device, &self.config);
                 t
             }
+
             // Outdated / Lost: surface fell out of sync (monitor change,
             // alt-tab, device reset). Reconfigure and skip this frame —
             // the next redraw will paint successfully.
@@ -389,6 +410,7 @@ impl State {
                 self.surface.configure(&self.device, &self.config);
                 return;
             }
+
             // Occluded: window minimized or hidden — drop the frame, the
             //   OS isn't showing it anyway. Sim keeps ticking.
             // Timeout: rare, can't acquire an image fast enough — skip.
@@ -453,22 +475,41 @@ impl State {
             _pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             _pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
+            let player_visual = lerp(
+                self.world.player.rect.rect_object.previous_position,
+                self.world.player.rect.rect_object.position,
+                alpha,
+            );
+
+            let camera_pos = [
+                player_visual[0] - self.config.width as f32 / 2.0,
+                player_visual[1] - self.config.height as f32 / 2.0,
+            ];
+
+            let camera_uniform = crate::camera::CameraUniform::new(camera_pos);
+
+            self.queue.write_buffer(
+                &self.world.camera.render_camera.uniform_buffer,
+                0,
+                bytemuck::bytes_of(&camera_uniform),
+            );
+
+            _pass.set_bind_group(1, &self.world.camera.render_camera.bind_group, &[]);
+
             for item in self.world.items.iter() {
-                let prev = item.rect_object.previous_position;
-                let curr = item.rect_object.position;
+                let visual_pos = lerp(
+                    item.rect_object.previous_position,
+                    item.rect_object.position,
+                    alpha,
+                );
 
-                let visual_x = prev[0] + (curr[0] - prev[0]) * alpha;
-                let visual_y = prev[1] + (curr[1] - prev[1]) * alpha;
-
-                let visual_pos = [visual_x, visual_y];
-                let item_uniform = RectUniform {
-                    position: visual_pos,
-                    size: item.size(),
-                    color: item.color(),
-                    camera_position: self.world.camera.position(),
-                    screen_size: [self.config.width as f32, self.config.height as f32],
-                    _padding: [0.0; 4],
-                };
+                let item_uniform = RectUniform::new(
+                    visual_pos,
+                    [self.config.width as f32, self.config.height as f32],
+                    item.size(),
+                    item.color(),
+                    item.rotation(),
+                );
 
                 self.queue.write_buffer(
                     &item.render_rect.uniform_buffer,
@@ -479,25 +520,15 @@ impl State {
                 _pass.set_bind_group(0, &item.render_rect.bind_group, &[]);
                 _pass.draw_indexed(0..self.num_indices, 0, 0..1);
             }
-            let visual_pos = [
-                self.world.player.rect.rect_object.previous_position[0]
-                    + (self.world.player.rect.rect_object.position[0]
-                        - self.world.player.rect.rect_object.previous_position[0])
-                        * alpha,
-                self.world.player.rect.rect_object.previous_position[1]
-                    + (self.world.player.rect.rect_object.position[1]
-                        - self.world.player.rect.rect_object.previous_position[1])
-                        * alpha,
-            ];
 
-            let player_uniform = RectUniform {
-                position: visual_pos,
-                screen_size: [self.config.width as f32, self.config.height as f32],
-                size: self.world.player.rect.size(),
-                color: self.world.player.rect.color(),
-                camera_position: self.world.camera.position(),
-                _padding: [0.0; 4],
-            };
+            let player_uniform = RectUniform::new(
+                player_visual,
+                [self.config.width as f32, self.config.height as f32],
+                self.world.player.rect.size(),
+                self.world.player.rect.color(),
+                self.world.player.rect.rotation(),
+            );
+
             self.queue.write_buffer(
                 &self.world.player.rect.render_rect.uniform_buffer,
                 0,

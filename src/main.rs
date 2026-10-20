@@ -117,8 +117,8 @@ impl Clock {
         let dt_seconds = frame_time.as_secs_f32();
         if dt_seconds > 0.0 {
             // Prevent dividing by zero on the very first frame!
-            let fps = 1.0 / dt_seconds;
-            println!("FPS: {:.0}", fps); // {:.0} rounds it to a whole number
+            let fps: f32 = 1.0 / dt_seconds;
+            // println!("FPS: {:.0}", fps); // {:.0} rounds it to a whole number
         }
 
         Tick {

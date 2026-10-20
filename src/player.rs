@@ -5,6 +5,7 @@ use crate::animation::Animation;
 use crate::config::*;
 use crate::rect;
 use crate::util::clamp;
+use std::f32::consts::PI;
 
 #[derive(Default)]
 pub struct InputState {
@@ -93,8 +94,13 @@ impl Player {
     }
 
     pub fn update(&mut self, dt: f32) {
-        self.animation_handler
-            .spin(self.grounded, self.rect.mut_rotation());
+        let progress = (self.velocity[1] + self.jump_strength) / (2.0 * self.jump_strength);
+        println!("progress rotation: {}", progress);
+        let calculated_rotation = progress.powf(2.0) * (2.0 * PI);
+        println!("calculated rotation: {:.0}", calculated_rotation);
+        *self.rect.mut_rotation() = if self.grounded { 0.0 } else { calculated_rotation };
+        // self.animation_handler
+        //     .spin(self.grounded, self.rect.mut_rotation());
 
         let mut direction_x = 0.0;
 
